@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { normalizeDatabaseUrl } from "./database";
 import {
   AppRole,
   MakeupStatus,
@@ -93,7 +94,7 @@ type AuthUser = {
   name?: string | null;
 };
 
-const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL }) : null;
+const pool = process.env.DATABASE_URL ? new Pool({ connectionString: normalizeDatabaseUrl(process.env.DATABASE_URL) }) : null;
 
 const memory: AppSnapshot = {
   profiles: [

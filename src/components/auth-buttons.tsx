@@ -1,6 +1,7 @@
 "use client";
 
 import { authClient } from "@/src/lib/auth-client";
+import { IconLogOut } from "./icons";
 
 export function LoginButton() {
   return (
@@ -20,7 +21,8 @@ export function SignOutButton({ variant }: { variant?: "secondary" }) {
       onClick={() => authClient.signOut({ fetchOptions: { onSuccess: () => window.location.reload() } })}
       type="button"
     >
-      Sign out
+      <IconLogOut />
+      <span className="sidebar-label">Sign out</span>
     </button>
   );
 }

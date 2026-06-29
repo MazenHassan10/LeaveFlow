@@ -2,11 +2,12 @@ import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { Pool } from "pg";
 import { Kysely, PostgresDialect } from "kysely";
+import { normalizeDatabaseUrl } from "./database";
 
 const databaseUrl = process.env.DATABASE_URL;
 
 const pool = new Pool({
-  connectionString: databaseUrl || "postgres://missing:missing@localhost:5432/missing"
+  connectionString: normalizeDatabaseUrl(databaseUrl || "postgres://missing:missing@localhost:5432/missing")
 });
 
 export const authDb = new Kysely<unknown>({
@@ -14,7 +15,7 @@ export const authDb = new Kysely<unknown>({
 });
 
 export const auth = betterAuth({
-  appName: "Time-Off Tracker",
+  appName: "LeaveFlow",
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET || "development-secret-change-before-production",
   database: {
