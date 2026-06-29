@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
 import {
@@ -99,6 +100,20 @@ type ParsedMakeupEntry = {
   startTime: string;
   endTime: string;
   plannedHours: number;
+};
+
+export type RequestPayload = {
+  requestType: RequestType;
+  reason: string;
+  segmentDate: string;
+  segmentStart: string;
+  segmentEnd: string;
+  requestedHours: number;
+  makeupEntries: ParsedMakeupEntry[];
+};
+
+export type CreateRequestResult = {
+  status: "created" | "duplicate";
 };
 
 const pool = process.env.DATABASE_URL ? new Pool({ connectionString: normalizeDatabaseUrl(process.env.DATABASE_URL) }) : null;
@@ -312,6 +327,108 @@ export function parseMakeupEntries(formData: FormData): ParsedMakeupEntry[] {
   return entries;
 }
 
+function normalizeReason(reason: string) {
+  return reason.trim();
+}
+
+function sortedMakeupEntries(entries: ParsedMakeupEntry[]) {
+  return [...entries].sort((left, right) => {
+    return `${left.date}|${left.startTime}|${left.endTime}|${left.plannedHours}`.localeCompare(
+      `${right.date}|${right.startTime}|${right.endTime}|${right.plannedHours}`
+    );
+  });
+}
+
+export function canonicalDuplicateKey(employeeId: string, payload: RequestPayload) {
+  return JSON.stringify({
+    employeeId,
+    requestType: payload.requestType,
+    reason: payload.reason,
+    segmentDate: payload.segmentDate,
+    segmentStart: payload.segmentStart,
+    segmentEnd: payload.segmentEnd,
+    requestedHours: payload.requestedHours,
+    makeupEntries: sortedMakeupEntries(payload.makeupEntries)
+  });
+}
+
+function advisoryLockKeys(key: string) {
+  const digest = createHash("sha256").update(key).digest();
+  return [digest.readInt32BE(0), digest.readInt32BE(4)] as const;
+}
+
+function makeupEntriesMatch(left: ParsedMakeupEntry[], right: ParsedMakeupEntry[]) {
+  const sortedLeft = sortedMakeupEntries(left);
+  const sortedRight = sortedMakeupEntries(right);
+  if (sortedLeft.length !== sortedRight.length) return false;
+
+  return sortedLeft.every((entry, index) => {
+    const other = sortedRight[index];
+    return entry.date === other.date
+      && entry.startTime === other.startTime
+      && entry.endTime === other.endTime
+      && entry.plannedHours === other.plannedHours;
+  });
+}
+
+function memoryRequestMatchesPayload(request: TimeOffRequest, payload: RequestPayload) {
+  const segment = request.segments[0];
+  if (!segment) return false;
+
+  return request.requestType === payload.requestType
+    && normalizeReason(request.reason) === payload.reason
+    && segment.date === payload.segmentDate
+    && segment.startTime === payload.segmentStart
+    && segment.endTime === payload.segmentEnd
+    && segment.requestedHours === payload.requestedHours
+    && makeupEntriesMatch(request.makeupEntries.map((entry) => ({
+      date: entry.date,
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      plannedHours: entry.plannedHours
+    })), payload.makeupEntries);
+}
+
+async function hasDuplicateRequest(client: Pick<Pool, "query">, actor: UserProfile, payload: RequestPayload) {
+  const candidates = await client.query(
+    `select r.id
+     from time_off_requests r
+     join time_off_request_segments s on s.request_id = r.id
+     where r.employee_id = $1
+       and r.request_type = $2
+       and coalesce(trim(r.reason), '') = $3
+       and s.request_date = $4
+       and s.start_time = $5
+       and s.end_time = $6
+       and s.requested_hours = $7`,
+    [actor.id, payload.requestType, payload.reason, payload.segmentDate, payload.segmentStart, payload.segmentEnd, payload.requestedHours]
+  );
+
+  for (const candidate of candidates.rows) {
+    const makeupRows = await client.query(
+      `select makeup_date, start_time, end_time, planned_hours
+       from makeup_plan_entries
+       where request_id = $1`,
+      [candidate.id]
+    );
+    const existingMakeupEntries = makeupRows.rows.map((row) => ({
+      date: formatDateValue(row.makeup_date),
+      startTime: String(row.start_time).slice(0, 5),
+      endTime: String(row.end_time).slice(0, 5),
+      plannedHours: Number(row.planned_hours)
+    }));
+
+    if (makeupEntriesMatch(existingMakeupEntries, payload.makeupEntries)) return true;
+  }
+
+  return false;
+}
+
+async function lockDuplicatePayload(client: Pick<Pool, "query">, actor: UserProfile, payload: RequestPayload) {
+  const [firstKey, secondKey] = advisoryLockKeys(canonicalDuplicateKey(actor.id, payload));
+  await client.query("select pg_advisory_xact_lock($1::int, $2::int)", [firstKey, secondKey]);
+}
+
 export async function updateProfile(actor: UserProfile, id: string, role: AppRole, status: ProfileStatus) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
   if (!pool) {
@@ -331,10 +448,10 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
   await audit(actor.email, "admin.profile_updated", "user_profile", id);
 }
 
-export async function createTimeOffRequest(actor: UserProfile, formData: FormData) {
+export async function createTimeOffRequest(actor: UserProfile, formData: FormData): Promise<CreateRequestResult> {
   if (actor.status !== "Active") throw new Error("Active profile required.");
   const requestType = String(formData.get("requestType")) as RequestType;
-  const reason = String(formData.get("reason") || "");
+  const reason = normalizeReason(String(formData.get("reason") || ""));
   const segmentDate = String(formData.get("segmentDate"));
   const segmentStart = String(formData.get("segmentStart"));
   const segmentEnd = String(formData.get("segmentEnd"));
@@ -343,8 +460,12 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
   const makeupHours = Number(makeupEntries.reduce((total, entry) => total + entry.plannedHours, 0).toFixed(2));
   if (!requestedHours) throw new Error("Requested time must have a valid start and end.");
   if (requestType !== "PTO" && !makeupHours) throw new Error("Additional time off requires a make-up plan.");
+  const payload: RequestPayload = { requestType, reason, segmentDate, segmentStart, segmentEnd, requestedHours, makeupEntries };
 
   if (!pool) {
+    const duplicate = memory.requests.some((request) => request.employeeId === actor.id && memoryRequestMatchesPayload(request, payload));
+    if (duplicate) return { status: "duplicate" };
+
     const requestId = uuid();
     memory.requests.unshift({
       id: requestId,
@@ -361,12 +482,18 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
       makeupEntries: makeupEntries.map((entry) => ({ id: uuid(), requestId, ...entry, verificationStatus: "Pending" }))
     });
     await audit(actor.email, "employee.request_submitted", "time_off_request", requestId);
-    return;
+    return { status: "created" };
   }
 
   const client = await pool.connect();
   try {
     await client.query("begin");
+    await lockDuplicatePayload(client, actor, payload);
+    if (await hasDuplicateRequest(client, actor, payload)) {
+      await client.query("commit");
+      return { status: "duplicate" };
+    }
+
     const request = await client.query(
       `insert into time_off_requests
        (employee_id, request_type, reason, total_requested_hours, total_makeup_hours, is_late_notice, requires_makeup_plan)
@@ -389,6 +516,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
     }
     await client.query("commit");
     await audit(actor.email, "employee.request_submitted", "time_off_request", requestId);
+    return { status: "created" };
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -438,6 +566,85 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
     }
     await client.query("commit");
     await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function yearFromDate(value: string | Date | null | undefined) {
+  if (!value) return new Date().getFullYear();
+  return new Date(value).getFullYear();
+}
+
+function recalculateMemoryPtoBalance(employeeId: string, calendarYear: number) {
+  const balance = memory.balances[employeeId];
+  if (!balance) return;
+
+  const usedHours = Number(memory.requests
+    .filter((request) => {
+      return request.employeeId === employeeId
+        && request.requestType === "PTO"
+        && request.status === "Approved"
+        && yearFromDate(request.approvedAt) === calendarYear;
+    })
+    .reduce((total, request) => total + request.totalRequestedHours, 0)
+    .toFixed(2));
+
+  balance.usedHours = usedHours;
+  balance.remainingHours = Number((balance.annualAllowanceHours - usedHours).toFixed(2));
+}
+
+export async function deleteRequest(actor: UserProfile, requestId: string) {
+  if (!isAdmin(actor)) throw new Error("Admin access required.");
+
+  if (!pool) {
+    const requestIndex = memory.requests.findIndex((request) => request.id === requestId);
+    if (requestIndex === -1) return;
+
+    const [request] = memory.requests.splice(requestIndex, 1);
+    if (request.requestType === "PTO" && request.status === "Approved") {
+      recalculateMemoryPtoBalance(request.employeeId, yearFromDate(request.approvedAt));
+    }
+
+    await audit(actor.email, "admin.request_deleted", "time_off_request", requestId);
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const request = await client.query("select * from time_off_requests where id = $1 for update", [requestId]);
+    const deletedRequest = request.rows[0];
+    if (!deletedRequest) {
+      await client.query("commit");
+      return;
+    }
+
+    await client.query("delete from time_off_requests where id = $1", [requestId]);
+
+    if (deletedRequest.request_type === "PTO" && deletedRequest.status === "Approved") {
+      const calendarYear = yearFromDate(deletedRequest.approved_at);
+      await client.query(
+        `update pto_balances
+         set used_hours = coalesce((
+           select sum(total_requested_hours)
+           from time_off_requests
+           where employee_id = $1
+             and request_type = 'PTO'
+             and status = 'Approved'
+             and extract(year from approved_at)::int = $2
+         ), 0)
+         where employee_id = $1
+           and calendar_year = $2`,
+        [deletedRequest.employee_id, calendarYear]
+      );
+    }
+
+    await client.query("commit");
+    await audit(actor.email, "admin.request_deleted", "time_off_request", requestId);
   } catch (error) {
     await client.query("rollback");
     throw error;
