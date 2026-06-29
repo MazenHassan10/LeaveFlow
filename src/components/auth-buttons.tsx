@@ -1,7 +1,7 @@
 "use client";
 
 import { authClient } from "@/src/lib/auth-client";
-import { IconLogOut } from "./icons";
+import { IconGoogle, IconLogOut } from "./icons";
 
 export function LoginButton() {
   return (
@@ -9,6 +9,7 @@ export function LoginButton() {
       onClick={() => authClient.signIn.social({ provider: "google", callbackURL: "/" })}
       type="button"
     >
+      <IconGoogle />
       Continue with Google
     </button>
   );
