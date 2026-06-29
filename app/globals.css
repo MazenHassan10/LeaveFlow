@@ -349,6 +349,15 @@ button:disabled:hover {
   box-shadow: none;
 }
 
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: spin var(--duration-slow) linear infinite;
+}
+
 .secondary, button.secondary {
   color: var(--primary);
   background: var(--primary-subtle);
@@ -590,6 +599,7 @@ nav a:hover .nav-icon {
 .signed-in-meta {
   display: grid;
   gap: var(--space-1);
+  min-width: 0;
 }
 
 .signed-in strong {
@@ -600,6 +610,19 @@ nav a:hover .nav-icon {
 .signed-in span, .signed-in small {
   color: var(--ink-muted);
   font-size: var(--text-xs);
+}
+
+.signed-in-meta strong,
+.signed-in-meta span,
+.signed-in-meta small,
+.user-row strong,
+.user-row span,
+.profile-main strong,
+.profile-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 
@@ -794,6 +817,16 @@ nav a:hover .nav-icon {
   font-size: var(--text-sm);
 }
 
+.request-reason {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .request-card > .actions,
 .request-card > .makeup-line,
 .request-card > .notice {
@@ -887,6 +920,7 @@ nav a:hover .nav-icon {
 .user-row > div {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .user-row strong {
@@ -1015,6 +1049,7 @@ nav a:hover .nav-icon {
 .profile-main {
   display: grid;
   gap: var(--space-1);
+  min-width: 0;
 }
 
 .profile-main strong {
@@ -1121,6 +1156,12 @@ nav a:hover .nav-icon {
   border: 1px solid rgba(245, 158, 11, 0.15);
 }
 
+.success {
+  color: var(--color-success-600);
+  background: linear-gradient(135deg, var(--color-success-50), var(--color-success-100));
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
 
 /* ===== 15. Empty States ===== */
 
@@ -1192,6 +1233,10 @@ nav a:hover .nav-icon {
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {

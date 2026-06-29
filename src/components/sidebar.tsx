@@ -47,9 +47,9 @@ export function Sidebar({ profile }: { profile: UserProfile }) {
       <div className="signed-in">
         <span className="avatar" aria-hidden="true">{initialsFor(profile.fullName)}</span>
         <div className="signed-in-meta sidebar-label">
-          <strong>{profile.fullName}</strong>
-          <span>{profile.email}</span>
-          <small>{profile.role} · {profile.status}</small>
+          <strong title={profile.fullName}>{profile.fullName}</strong>
+          <span title={profile.email}>{profile.email}</span>
+          <small title={`${profile.role} · ${profile.status}`}>{profile.role} · {profile.status}</small>
         </div>
         <SignOutButton variant="secondary" />
       </div>

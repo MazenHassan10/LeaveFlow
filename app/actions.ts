@@ -5,12 +5,18 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/src/lib/auth";
 import {
   createTimeOffRequest,
+  deleteRequest,
   ensureProfile,
   setRequestStatus,
   updateProfile,
   verifyMakeup
 } from "@/src/lib/app-data";
 import type { AppRole, MakeupStatus, ProfileStatus } from "@/src/lib/pto";
+
+export type SubmitRequestState = {
+  status: "idle" | "created" | "duplicate" | "error";
+  message: string;
+};
 
 async function currentProfile() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -22,10 +28,23 @@ async function currentProfile() {
   });
 }
 
-export async function submitTimeOffRequest(formData: FormData) {
-  const profile = await currentProfile();
-  await createTimeOffRequest(profile, formData);
-  revalidatePath("/");
+export async function submitTimeOffRequest(_previousState: SubmitRequestState, formData: FormData): Promise<SubmitRequestState> {
+  try {
+    const profile = await currentProfile();
+    const result = await createTimeOffRequest(profile, formData);
+    revalidatePath("/");
+
+    if (result.status === "duplicate") {
+      return { status: "duplicate", message: "This exact request already exists, so it was not submitted again." };
+    }
+
+    return { status: "created", message: "Request submitted." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Request could not be submitted."
+    };
+  }
 }
 
 export async function updateUserProfileAction(formData: FormData) {
@@ -42,6 +61,12 @@ export async function updateUserProfileAction(formData: FormData) {
 export async function setRequestStatusAction(formData: FormData) {
   const actor = await currentProfile();
   await setRequestStatus(actor, String(formData.get("requestId")), String(formData.get("status")) as "Approved" | "Rejected");
+  revalidatePath("/");
+}
+
+export async function deleteRequestAction(formData: FormData) {
+  const actor = await currentProfile();
+  await deleteRequest(actor, String(formData.get("requestId")));
   revalidatePath("/");
 }
 

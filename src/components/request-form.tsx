@@ -1,15 +1,33 @@
 "use client";
 
-import { useState } from "react";
-import { submitTimeOffRequest } from "@/app/actions";
+import { useActionState, useState } from "react";
+import { useFormStatus } from "react-dom";
+import { submitTimeOffRequest, type SubmitRequestState } from "@/app/actions";
 import { IconPlus, IconX } from "./icons";
 
 type MakeupRow = {
   id: number;
 };
 
+const initialState: SubmitRequestState = {
+  status: "idle",
+  message: ""
+};
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? <span className="spinner" aria-hidden="true" /> : null}
+      {pending ? "Submitting..." : "Submit request"}
+    </button>
+  );
+}
+
 export function RequestForm() {
   const [makeupRows, setMakeupRows] = useState<MakeupRow[]>([{ id: 1 }]);
+  const [state, formAction] = useActionState(submitTimeOffRequest, initialState);
 
   function addMakeupRow() {
     setMakeupRows((rows) => [...rows, { id: Math.max(...rows.map((row) => row.id)) + 1 }]);
@@ -20,8 +38,11 @@ export function RequestForm() {
   }
 
   return (
-    <form action={submitTimeOffRequest} className="panel form-panel">
+    <form action={formAction} className="panel form-panel">
       <h2>New request</h2>
+      {state.status !== "idle" ? (
+        <p className={`notice ${state.status === "error" ? "warning" : "success"}`}>{state.message}</p>
+      ) : null}
       <label>
         Request type
         <select name="requestType">
@@ -68,7 +89,7 @@ export function RequestForm() {
           </div>
         ))}
       </div>
-      <button type="submit">Submit request</button>
+      <SubmitButton />
     </form>
   );
 }

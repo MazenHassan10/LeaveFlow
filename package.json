@@ -7,7 +7,7 @@
     "dev": "next dev --webpack -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "test": "node tests/pto.test.mjs && bun tests/makeup-plan.test.ts"
+    "test": "node tests/pto.test.mjs && bun tests/makeup-plan.test.ts && bun tests/delete-request.test.ts && bun tests/duplicate-request.test.ts"
   },
   "dependencies": {
     "@types/node": "^26.0.1",

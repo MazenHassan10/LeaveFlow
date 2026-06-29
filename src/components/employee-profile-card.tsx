@@ -13,8 +13,8 @@ export function EmployeeProfileCard({ profile, snapshot }: { profile: UserProfil
     <article className="profile-card">
       <div className="avatar">{profile.fullName.slice(0, 2).toUpperCase()}</div>
       <div className="profile-main">
-        <strong>{profile.fullName}</strong>
-        <span>{profile.email}</span>
+        <strong title={profile.fullName}>{profile.fullName}</strong>
+        <span title={profile.email}>{profile.email}</span>
         <div className="pill-row">
           <StatusBadge value={profile.role} />
           <StatusBadge value={profile.status} />

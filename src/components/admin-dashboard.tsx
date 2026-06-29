@@ -27,7 +27,7 @@ export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
           <h2>Time-off approvals</h2>
           <CardList empty="No requests submitted.">
             {requests.map((request) => (
-              <AdminRequestCard key={request.id} request={request} />
+              <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} />
             ))}
           </CardList>
         </section>
