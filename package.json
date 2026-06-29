@@ -1,0 +1,25 @@
+{
+  "name": "hour-based-pto-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --webpack -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "test": "node tests/pto.test.mjs"
+  },
+  "dependencies": {
+    "@types/node": "^26.0.1",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "better-auth": "^1.6.22",
+    "kysely": "^0.29.2",
+    "next": "^16.2.9",
+    "pg": "^8.22.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "typescript": "^6.0.3"
+  }
+}
