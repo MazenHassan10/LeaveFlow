@@ -55,6 +55,15 @@ export function IconX() {
   );
 }
 
+export function IconPlus() {
+  return (
+    <svg {...defaultProps}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
 export function IconUser() {
   return (
     <svg {...defaultProps}>

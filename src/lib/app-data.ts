@@ -94,6 +94,13 @@ type AuthUser = {
   name?: string | null;
 };
 
+type ParsedMakeupEntry = {
+  date: string;
+  startTime: string;
+  endTime: string;
+  plannedHours: number;
+};
+
 const pool = process.env.DATABASE_URL ? new Pool({ connectionString: normalizeDatabaseUrl(process.env.DATABASE_URL) }) : null;
 
 const memory: AppSnapshot = {
@@ -269,6 +276,37 @@ export function isAdmin(profile: UserProfile) {
   return profile.role === "Admin" && profile.status === "Active";
 }
 
+function formValues(formData: FormData, name: string) {
+  return formData.getAll(name).map((value) => String(value || "").trim());
+}
+
+export function parseMakeupEntries(formData: FormData): ParsedMakeupEntry[] {
+  const dates = formValues(formData, "makeupDate");
+  const starts = formValues(formData, "makeupStart");
+  const ends = formValues(formData, "makeupEnd");
+  const rowCount = Math.max(dates.length, starts.length, ends.length);
+  const entries: ParsedMakeupEntry[] = [];
+
+  for (let index = 0; index < rowCount; index += 1) {
+    const date = dates[index] || "";
+    const startTime = starts[index] || "";
+    const endTime = ends[index] || "";
+    const hasAnyValue = Boolean(date || startTime || endTime);
+
+    if (!hasAnyValue) continue;
+    if (!date || !startTime || !endTime) {
+      throw new Error("Each make-up row needs a date, start time, and end time.");
+    }
+
+    const plannedHours = calculateHours(startTime, endTime);
+    if (!plannedHours) throw new Error("Make-up rows must have a valid start and end.");
+
+    entries.push({ date, startTime, endTime, plannedHours });
+  }
+
+  return entries;
+}
+
 export async function updateProfile(actor: UserProfile, id: string, role: AppRole, status: ProfileStatus) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
   if (!pool) {
@@ -295,11 +333,9 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
   const segmentDate = String(formData.get("segmentDate"));
   const segmentStart = String(formData.get("segmentStart"));
   const segmentEnd = String(formData.get("segmentEnd"));
-  const makeupDate = String(formData.get("makeupDate") || "");
-  const makeupStart = String(formData.get("makeupStart") || "");
-  const makeupEnd = String(formData.get("makeupEnd") || "");
+  const makeupEntries = parseMakeupEntries(formData);
   const requestedHours = calculateHours(segmentStart, segmentEnd);
-  const makeupHours = makeupDate ? calculateHours(makeupStart, makeupEnd) : 0;
+  const makeupHours = Number(makeupEntries.reduce((total, entry) => total + entry.plannedHours, 0).toFixed(2));
   if (!requestedHours) throw new Error("Requested time must have a valid start and end.");
   if (requestType !== "PTO" && !makeupHours) throw new Error("Additional time off requires a make-up plan.");
 
@@ -317,9 +353,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
       status: "Pending",
       submittedAt: new Date().toISOString(),
       segments: [{ id: uuid(), requestId, date: segmentDate, startTime: segmentStart, endTime: segmentEnd, requestedHours }],
-      makeupEntries: makeupHours
-        ? [{ id: uuid(), requestId, date: makeupDate, startTime: makeupStart, endTime: makeupEnd, plannedHours: makeupHours, verificationStatus: "Pending" }]
-        : []
+      makeupEntries: makeupEntries.map((entry) => ({ id: uuid(), requestId, ...entry, verificationStatus: "Pending" }))
     });
     await audit(actor.email, "employee.request_submitted", "time_off_request", requestId);
     return;
@@ -341,11 +375,11 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
        values ($1, $2, $3, $4, $5)`,
       [requestId, segmentDate, segmentStart, segmentEnd, requestedHours]
     );
-    if (makeupHours) {
+    for (const entry of makeupEntries) {
       await client.query(
         `insert into makeup_plan_entries (request_id, makeup_date, start_time, end_time, planned_hours)
          values ($1, $2, $3, $4, $5)`,
-        [requestId, makeupDate, makeupStart, makeupEnd, makeupHours]
+        [requestId, entry.date, entry.startTime, entry.endTime, entry.plannedHours]
       );
     }
     await client.query("commit");
