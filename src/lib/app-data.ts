@@ -136,6 +136,11 @@ function mapProfile(row: Record<string, any>): UserProfile {
   };
 }
 
+function formatDateValue(value: unknown) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value || "");
+}
+
 async function audit(actorEmail: string, action: string, targetType: string, targetId: string | null) {
   if (!pool) {
     memory.auditEvents.unshift({ id: uuid(), actorEmail, action, targetType, targetId, createdAt: new Date().toISOString() });
@@ -243,7 +248,7 @@ export async function getSnapshot(): Promise<AppSnapshot> {
       segments: segments.rows.filter((segment) => segment.request_id === row.id).map((segment) => ({
         id: segment.id,
         requestId: segment.request_id,
-        date: segment.request_date,
+        date: formatDateValue(segment.request_date),
         startTime: String(segment.start_time).slice(0, 5),
         endTime: String(segment.end_time).slice(0, 5),
         requestedHours: Number(segment.requested_hours),
@@ -252,7 +257,7 @@ export async function getSnapshot(): Promise<AppSnapshot> {
       makeupEntries: makeupEntries.rows.filter((entry) => entry.request_id === row.id).map((entry) => ({
         id: entry.id,
         requestId: entry.request_id,
-        date: entry.makeup_date,
+        date: formatDateValue(entry.makeup_date),
         startTime: String(entry.start_time).slice(0, 5),
         endTime: String(entry.end_time).slice(0, 5),
         plannedHours: Number(entry.planned_hours),
