@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -11,6 +11,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "LeaveFlow",
   description: "Hour-based PTO requests, approvals, make-up plans, and reporting.",
+};
+
+export const viewport: Viewport = {
   themeColor: "#6366f1",
 };
 
