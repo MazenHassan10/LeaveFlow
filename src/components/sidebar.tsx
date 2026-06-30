@@ -1,5 +1,8 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { UserProfile } from "@/src/lib/app-data";
-import { isAdmin } from "@/src/lib/app-data";
 import { SignOutButton } from "./auth-buttons";
 import { IconBriefcase, IconShield, IconChartBar, IconChevronLeft, LeaveFlowLogo } from "./icons";
 
@@ -12,7 +15,15 @@ function initialsFor(name: string) {
     .join("") || "LF";
 }
 
-export function Sidebar({ profile }: { profile: UserProfile }) {
+export function Sidebar({ profile, canAccessAdmin }: { profile: UserProfile; canAccessAdmin: boolean }) {
+  const pathname = usePathname();
+
+  const links = [
+    { href: "/employee", label: "My time off", icon: <IconBriefcase /> },
+    ...(canAccessAdmin ? [{ href: "/admin", label: "Admin", icon: <IconShield /> }] : []),
+    { href: "/reports", label: "Reports", icon: <IconChartBar /> },
+  ];
+
   return (
     <aside className="sidebar">
       <input type="checkbox" id="sidebar-toggle" className="sr-only" />
@@ -29,20 +40,17 @@ export function Sidebar({ profile }: { profile: UserProfile }) {
         </label>
       </div>
       <nav aria-label="Main navigation">
-        <a href="#employee" title="My time off">
-          <span className="nav-icon"><IconBriefcase /></span>
-          <span className="sidebar-label">My time off</span>
-        </a>
-        {isAdmin(profile) ? (
-          <a href="#admin" title="Admin">
-            <span className="nav-icon"><IconShield /></span>
-            <span className="sidebar-label">Admin</span>
-          </a>
-        ) : null}
-        <a href="#reports" title="Reports">
-          <span className="nav-icon"><IconChartBar /></span>
-          <span className="sidebar-label">Reports</span>
-        </a>
+        {links.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            title={link.label}
+            aria-current={pathname === link.href ? "page" : undefined}
+          >
+            <span className="nav-icon">{link.icon}</span>
+            <span className="sidebar-label">{link.label}</span>
+          </Link>
+        ))}
       </nav>
       <div className="signed-in">
         <span className="avatar" aria-hidden="true">{initialsFor(profile.fullName)}</span>

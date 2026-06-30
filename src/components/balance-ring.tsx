@@ -1,56 +1,66 @@
 "use client";
 
-import { useRef } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
+import { useEffect, useRef } from "react";
 
 const RADIUS = 46;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-gsap.registerPlugin(useGSAP);
 
 export function BalanceRing({ used, total, remaining }: { used: number; total: number; remaining: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const usedRatio = total > 0 ? Math.min(1, used / total) : 0;
   const offset = CIRCUMFERENCE * (1 - usedRatio);
 
-  useGSAP(() => {
-    const mm = gsap.matchMedia();
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    let active = true;
 
-    mm.add("(prefers-reduced-motion: no-preference)", () => {
-      gsap.fromTo(".ring-fill", {
-        strokeDashoffset: CIRCUMFERENCE,
-      }, {
-        strokeDashoffset: offset,
-        duration: 0.9,
-        ease: "power3.out",
-      });
+    import("gsap").then(({ default: gsap }) => {
+      if (!active || !ref.current) return;
 
-      gsap.from(".ring-value", {
-        autoAlpha: 0,
-        scale: 0.86,
-        duration: 0.45,
-        ease: "back.out(1.8)",
-        delay: 0.18,
-      });
+      const context = gsap.context(() => {
+        const mm = gsap.matchMedia();
 
-      gsap.from(".balance-stat-row", {
-        autoAlpha: 0,
-        x: 14,
-        duration: 0.35,
-        ease: "power2.out",
-        stagger: 0.06,
-        delay: 0.22,
-      });
-    }, ref);
+        mm.add("(prefers-reduced-motion: no-preference)", () => {
+          gsap.fromTo(".ring-fill", {
+            strokeDashoffset: CIRCUMFERENCE,
+          }, {
+            strokeDashoffset: offset,
+            duration: 0.9,
+            ease: "power3.out",
+          });
 
-    mm.add("(prefers-reduced-motion: reduce)", () => {
-      gsap.set(".ring-fill", { strokeDashoffset: offset });
-      gsap.set(".ring-value, .balance-stat-row", { autoAlpha: 1 });
-    }, ref);
+          gsap.from(".ring-value", {
+            autoAlpha: 0,
+            scale: 0.86,
+            duration: 0.45,
+            ease: "back.out(1.8)",
+            delay: 0.18,
+          });
 
-    return () => mm.revert();
-  }, { scope: ref, dependencies: [offset], revertOnUpdate: true });
+          gsap.from(".balance-stat-row", {
+            autoAlpha: 0,
+            x: 14,
+            duration: 0.35,
+            ease: "power2.out",
+            stagger: 0.06,
+            delay: 0.22,
+          });
+        });
+
+        mm.add("(prefers-reduced-motion: reduce)", () => {
+          gsap.set(".ring-fill", { strokeDashoffset: offset });
+          gsap.set(".ring-value, .balance-stat-row", { autoAlpha: 1 });
+        });
+      }, ref);
+
+      cleanup = () => context.revert();
+    });
+
+    return () => {
+      active = false;
+      cleanup?.();
+    };
+  }, [offset]);
 
   return (
     <div className="balance-ring-container">

@@ -19,6 +19,12 @@ export type SubmitRequestState = {
   message: string;
 };
 
+function revalidateDashboardRoutes() {
+  revalidatePath("/employee");
+  revalidatePath("/admin");
+  revalidatePath("/reports");
+}
+
 async function currentProfile() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.email) throw new Error("Sign in required.");
@@ -33,7 +39,7 @@ export async function submitTimeOffRequest(_previousState: SubmitRequestState, f
   try {
     const profile = await currentProfile();
     const result = await createTimeOffRequest(profile, formData);
-    revalidatePath("/");
+    revalidateDashboardRoutes();
 
     if (result.status === "duplicate") {
       return { status: "duplicate", message: "This exact request already exists, so it was not submitted again." };
@@ -56,7 +62,7 @@ export async function updateUserProfileAction(formData: FormData) {
     String(formData.get("role")) as AppRole,
     String(formData.get("status")) as ProfileStatus
   );
-  revalidatePath("/");
+  revalidateDashboardRoutes();
 }
 
 export async function updatePtoAllowanceAction(formData: FormData) {
@@ -66,23 +72,23 @@ export async function updatePtoAllowanceAction(formData: FormData) {
     String(formData.get("employeeId")),
     String(formData.get("annualAllowanceHours"))
   );
-  revalidatePath("/");
+  revalidateDashboardRoutes();
 }
 
 export async function setRequestStatusAction(formData: FormData) {
   const actor = await currentProfile();
   await setRequestStatus(actor, String(formData.get("requestId")), String(formData.get("status")) as "Approved" | "Rejected");
-  revalidatePath("/");
+  revalidateDashboardRoutes();
 }
 
 export async function deleteRequestAction(formData: FormData) {
   const actor = await currentProfile();
   await deleteRequest(actor, String(formData.get("requestId")));
-  revalidatePath("/");
+  revalidateDashboardRoutes();
 }
 
 export async function verifyMakeupAction(formData: FormData) {
   const actor = await currentProfile();
   await verifyMakeup(actor, String(formData.get("entryId")), String(formData.get("status")) as MakeupStatus);
-  revalidatePath("/");
+  revalidateDashboardRoutes();
 }

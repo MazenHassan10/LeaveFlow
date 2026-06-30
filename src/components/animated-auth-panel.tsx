@@ -1,35 +1,45 @@
 "use client";
 
-import { useRef } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
-
-gsap.registerPlugin(useGSAP);
+import { useEffect, useRef } from "react";
 
 export function AnimatedAuthPanel({ children }: { children: React.ReactNode }) {
   const scope = useRef<HTMLElement>(null);
 
-  useGSAP(() => {
-    const mm = gsap.matchMedia();
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    let active = true;
 
-    mm.add("(prefers-reduced-motion: no-preference)", () => {
-      const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+    import("gsap").then(({ default: gsap }) => {
+      if (!active || !scope.current) return;
 
-      tl.from(".auth-panel", {
-        autoAlpha: 0,
-        y: 20,
-        scale: 0.96,
-        duration: 0.55,
-      }).from(".auth-panel > *", {
-        autoAlpha: 0,
-        y: 12,
-        duration: 0.34,
-        stagger: 0.06,
-      }, "-=0.22");
-    }, scope);
+      const context = gsap.context(() => {
+        const mm = gsap.matchMedia();
 
-    return () => mm.revert();
-  }, { scope });
+        mm.add("(prefers-reduced-motion: no-preference)", () => {
+          const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+
+          tl.from(".auth-panel", {
+            autoAlpha: 0,
+            y: 20,
+            scale: 0.96,
+            duration: 0.55,
+          }).from(".auth-panel > *", {
+            autoAlpha: 0,
+            y: 12,
+            duration: 0.34,
+            stagger: 0.06,
+          }, "-=0.22");
+        });
+      }, scope);
+
+      cleanup = () => context.revert();
+    });
+
+    return () => {
+      active = false;
+      cleanup?.();
+    };
+  }, []);
 
   return (
     <main className="auth-page" ref={scope}>

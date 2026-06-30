@@ -3,12 +3,14 @@ import { PageHeader } from "./page-header";
 import { EmployeeProfileCard } from "./employee-profile-card";
 import { StatusBadge } from "./status-badge";
 import { CardList } from "./card-list";
+import { ReportCalendar } from "./report-calendar";
+import { formatTimestampInLosAngeles } from "@/src/lib/app-time";
 
 function nameFor(snapshot: AppSnapshot, id: string) {
   return snapshot.profiles.find((profile) => profile.id === id)?.fullName || "Unknown employee";
 }
 
-export function Reports({ snapshot }: { snapshot: AppSnapshot }) {
+export function Reports({ snapshot, month }: { snapshot: AppSnapshot; month?: string }) {
   const makeupEntries = snapshot.requests.flatMap((request) =>
     request.makeupEntries.map((entry) => ({ request, entry }))
   );
@@ -16,6 +18,7 @@ export function Reports({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <section id="reports" className="page-section">
       <PageHeader eyebrow="Reports" title="Profiles, make-up work, and logs" />
+      <ReportCalendar snapshot={snapshot} month={month} />
       <section className="panel">
         <h2>Employee profiles</h2>
         <div className="profile-grid">
@@ -45,7 +48,7 @@ export function Reports({ snapshot }: { snapshot: AppSnapshot }) {
               <div className="list-card" key={event.id}>
                 <strong>{event.action}</strong>
                 <span>{event.actorEmail}</span>
-                <small>{event.targetType} · {new Date(event.createdAt).toLocaleString()}</small>
+                <small>{event.targetType} · {formatTimestampInLosAngeles(event.createdAt)}</small>
               </div>
             ))}
           </CardList>

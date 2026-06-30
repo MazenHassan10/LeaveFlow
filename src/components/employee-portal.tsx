@@ -4,15 +4,17 @@ import { RequestForm } from "./request-form";
 import { RequestCard } from "./request-card";
 import { CardList } from "./card-list";
 import { BalanceRing } from "./balance-ring";
+import { losAngelesYear } from "@/src/lib/app-time";
 
 export function EmployeePortal({ profile, snapshot }: { profile: UserProfile; snapshot: AppSnapshot }) {
+  const calendarYear = losAngelesYear();
   const balance = snapshot.balances[profile.id] || {
     employeeId: profile.id,
-    calendarYear: new Date().getFullYear(),
+    calendarYear,
     annualAllowanceHours: 48,
     usedHours: 0,
     remainingHours: 48,
-    expiresOn: `${new Date().getFullYear()}-12-31`,
+    expiresOn: `${calendarYear}-12-31`,
   };
   const requests = snapshot.requests.filter((request) => request.employeeId === profile.id);
 

@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
+import { formatCivilDate, losAngelesDate, losAngelesYear, yearInLosAngeles } from "./app-time";
 import {
   AppRole,
   MakeupStatus,
@@ -152,8 +153,103 @@ function mapProfile(row: Record<string, any>): UserProfile {
 }
 
 function formatDateValue(value: unknown) {
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return formatCivilDate(value.getFullYear(), value.getMonth() + 1, value.getDate());
   return String(value || "");
+}
+
+function mapBalance(row: Record<string, any>): PtoBalance {
+  return {
+    employeeId: row.employee_id,
+    calendarYear: row.calendar_year,
+    annualAllowanceHours: Number(row.annual_allowance_hours),
+    usedHours: Number(row.used_hours),
+    remainingHours: Number(row.remaining_hours),
+    expiresOn: formatDateValue(row.expires_on)
+  };
+}
+
+function mapSegment(row: Record<string, any>): TimeOffSegment {
+  return {
+    id: row.id,
+    requestId: row.request_id,
+    date: formatDateValue(row.request_date),
+    startTime: String(row.start_time).slice(0, 5),
+    endTime: String(row.end_time).slice(0, 5),
+    requestedHours: Number(row.requested_hours),
+    note: row.note
+  };
+}
+
+function mapMakeupEntry(row: Record<string, any>): MakeupEntry {
+  return {
+    id: row.id,
+    requestId: row.request_id,
+    date: formatDateValue(row.makeup_date),
+    startTime: String(row.start_time).slice(0, 5),
+    endTime: String(row.end_time).slice(0, 5),
+    plannedHours: Number(row.planned_hours),
+    verificationStatus: row.verification_status,
+    verifiedBy: row.verified_by,
+    verifiedAt: row.verified_at?.toISOString?.() || row.verified_at
+  };
+}
+
+function mapRequest(row: Record<string, any>, segments: TimeOffSegment[], makeupEntries: MakeupEntry[]): TimeOffRequest {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    requestType: row.request_type,
+    reason: row.reason || "",
+    totalRequestedHours: Number(row.total_requested_hours),
+    totalMakeupHours: Number(row.total_makeup_hours),
+    isLateNotice: row.is_late_notice,
+    requiresMakeupPlan: row.requires_makeup_plan,
+    status: row.status,
+    approverEmail: row.approver_email,
+    approverComment: row.approver_comment,
+    approvedAt: row.approved_at?.toISOString?.() || row.approved_at,
+    submittedAt: row.submitted_at?.toISOString?.() || row.submitted_at,
+    segments,
+    makeupEntries
+  };
+}
+
+function groupByRequestId<T extends { requestId: string }>(items: T[]) {
+  return items.reduce<Record<string, T[]>>((groups, item) => {
+    groups[item.requestId] ||= [];
+    groups[item.requestId].push(item);
+    return groups;
+  }, {});
+}
+
+function mapRequestRows(
+  requestRows: Record<string, any>[],
+  segmentRows: Record<string, any>[],
+  makeupRows: Record<string, any>[]
+) {
+  const segmentsByRequestId = groupByRequestId(segmentRows.map(mapSegment));
+  const makeupByRequestId = groupByRequestId(makeupRows.map(mapMakeupEntry));
+
+  return requestRows.map((row) => mapRequest(
+    row,
+    segmentsByRequestId[row.id] || [],
+    makeupByRequestId[row.id] || []
+  ));
+}
+
+function cloneMemorySnapshot(filter?: { employeeId?: string; includeAudit?: boolean }): AppSnapshot {
+  const snapshot = structuredClone(memory);
+  if (!filter?.employeeId) {
+    if (filter?.includeAudit === false) snapshot.auditEvents = [];
+    return snapshot;
+  }
+
+  return {
+    profiles: snapshot.profiles.filter((profile) => profile.id === filter.employeeId),
+    balances: snapshot.balances[filter.employeeId] ? { [filter.employeeId]: snapshot.balances[filter.employeeId] } : {},
+    requests: snapshot.requests.filter((request) => request.employeeId === filter.employeeId),
+    auditEvents: filter.includeAudit ? snapshot.auditEvents : []
+  };
 }
 
 async function audit(actorEmail: string, action: string, targetType: string, targetId: string | null) {
@@ -220,7 +316,7 @@ export async function ensureProfile(user: AuthUser): Promise<UserProfile> {
 }
 
 export async function getSnapshot(): Promise<AppSnapshot> {
-  if (!pool) return structuredClone(memory);
+  if (!pool) return cloneMemorySnapshot();
 
   const [profiles, balances, requests, segments, makeupEntries, auditEvents] = await Promise.all([
     pool.query("select * from user_profiles order by protected_owner desc, full_name asc"),
@@ -233,54 +329,13 @@ export async function getSnapshot(): Promise<AppSnapshot> {
 
   const balanceMap: Record<string, PtoBalance> = {};
   balances.rows.forEach((row) => {
-    balanceMap[row.employee_id] = {
-      employeeId: row.employee_id,
-      calendarYear: row.calendar_year,
-      annualAllowanceHours: Number(row.annual_allowance_hours),
-      usedHours: Number(row.used_hours),
-      remainingHours: Number(row.remaining_hours),
-      expiresOn: row.expires_on
-    };
+    balanceMap[row.employee_id] = mapBalance(row);
   });
 
   return {
     profiles: profiles.rows.map(mapProfile),
     balances: balanceMap,
-    requests: requests.rows.map((row) => ({
-      id: row.id,
-      employeeId: row.employee_id,
-      requestType: row.request_type,
-      reason: row.reason || "",
-      totalRequestedHours: Number(row.total_requested_hours),
-      totalMakeupHours: Number(row.total_makeup_hours),
-      isLateNotice: row.is_late_notice,
-      requiresMakeupPlan: row.requires_makeup_plan,
-      status: row.status,
-      approverEmail: row.approver_email,
-      approverComment: row.approver_comment,
-      approvedAt: row.approved_at?.toISOString?.() || row.approved_at,
-      submittedAt: row.submitted_at?.toISOString?.() || row.submitted_at,
-      segments: segments.rows.filter((segment) => segment.request_id === row.id).map((segment) => ({
-        id: segment.id,
-        requestId: segment.request_id,
-        date: formatDateValue(segment.request_date),
-        startTime: String(segment.start_time).slice(0, 5),
-        endTime: String(segment.end_time).slice(0, 5),
-        requestedHours: Number(segment.requested_hours),
-        note: segment.note
-      })),
-      makeupEntries: makeupEntries.rows.filter((entry) => entry.request_id === row.id).map((entry) => ({
-        id: entry.id,
-        requestId: entry.request_id,
-        date: formatDateValue(entry.makeup_date),
-        startTime: String(entry.start_time).slice(0, 5),
-        endTime: String(entry.end_time).slice(0, 5),
-        plannedHours: Number(entry.planned_hours),
-        verificationStatus: entry.verification_status,
-        verifiedBy: entry.verified_by,
-        verifiedAt: entry.verified_at?.toISOString?.() || entry.verified_at
-      }))
-    })),
+    requests: mapRequestRows(requests.rows, segments.rows, makeupEntries.rows),
     auditEvents: auditEvents.rows.map((row) => ({
       id: row.id,
       actorEmail: row.actor_email,
@@ -290,6 +345,52 @@ export async function getSnapshot(): Promise<AppSnapshot> {
       createdAt: row.created_at?.toISOString?.() || row.created_at
     }))
   };
+}
+
+export async function getEmployeeSnapshot(employeeId: string): Promise<AppSnapshot> {
+  if (!pool) return cloneMemorySnapshot({ employeeId, includeAudit: false });
+
+  const [profile, balance, requests, segments, makeupEntries] = await Promise.all([
+    pool.query("select * from user_profiles where id = $1", [employeeId]),
+    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances where employee_id = $1", [employeeId]),
+    pool.query("select * from time_off_requests where employee_id = $1 order by submitted_at desc", [employeeId]),
+    pool.query(
+      `select s.*
+       from time_off_request_segments s
+       join time_off_requests r on r.id = s.request_id
+       where r.employee_id = $1
+       order by s.request_date asc, s.start_time asc`,
+      [employeeId]
+    ),
+    pool.query(
+      `select m.*
+       from makeup_plan_entries m
+       join time_off_requests r on r.id = m.request_id
+       where r.employee_id = $1
+       order by m.makeup_date asc, m.start_time asc`,
+      [employeeId]
+    )
+  ]);
+
+  const balances: Record<string, PtoBalance> = {};
+  balance.rows.forEach((row) => {
+    balances[row.employee_id] = mapBalance(row);
+  });
+
+  return {
+    profiles: profile.rows.map(mapProfile),
+    balances,
+    requests: mapRequestRows(requests.rows, segments.rows, makeupEntries.rows),
+    auditEvents: []
+  };
+}
+
+export async function getAdminSnapshot() {
+  return getSnapshot();
+}
+
+export async function getReportsSnapshot() {
+  return getSnapshot();
 }
 
 export function isAdmin(profile: UserProfile) {
@@ -457,7 +558,7 @@ function normalizeAllowanceHours(value: string | number) {
 }
 
 function currentBalanceYear() {
-  return new Date().getFullYear();
+  return losAngelesYear();
 }
 
 function yearEnd(year: number) {
@@ -536,7 +637,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
       reason,
       totalRequestedHours: requestedHours,
       totalMakeupHours: makeupHours,
-      isLateNotice: isLateNotice(new Date().toISOString().slice(0, 10), segmentDate),
+      isLateNotice: isLateNotice(losAngelesDate(), segmentDate),
       requiresMakeupPlan: requestType !== "PTO",
       status: "Pending",
       submittedAt: new Date().toISOString(),
@@ -561,7 +662,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
        (employee_id, request_type, reason, total_requested_hours, total_makeup_hours, is_late_notice, requires_makeup_plan)
        values ($1, $2, $3, $4, $5, $6, $7)
        returning id`,
-      [actor.id, requestType, reason, requestedHours, makeupHours, isLateNotice(new Date().toISOString().slice(0, 10), segmentDate), requestType !== "PTO"]
+      [actor.id, requestType, reason, requestedHours, makeupHours, isLateNotice(losAngelesDate(), segmentDate), requestType !== "PTO"]
     );
     const requestId = request.rows[0].id;
     await client.query(
@@ -598,11 +699,11 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
     if (status === "Approved" && request.requestType === "PTO") {
       const balance = memory.balances[request.employeeId] || {
         employeeId: request.employeeId,
-        calendarYear: new Date().getFullYear(),
+        calendarYear: losAngelesYear(),
         annualAllowanceHours: PTO_ALLOWANCE_HOURS,
         usedHours: 0,
         remainingHours: PTO_ALLOWANCE_HOURS,
-        expiresOn: `${new Date().getFullYear()}-12-31`
+        expiresOn: `${losAngelesYear()}-12-31`
       };
       balance.usedHours += request.totalRequestedHours;
       balance.remainingHours = balance.annualAllowanceHours - balance.usedHours;
@@ -637,8 +738,7 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
 }
 
 function yearFromDate(value: string | Date | null | undefined) {
-  if (!value) return new Date().getFullYear();
-  return new Date(value).getFullYear();
+  return yearInLosAngeles(value);
 }
 
 function recalculateMemoryPtoBalance(employeeId: string, calendarYear: number) {

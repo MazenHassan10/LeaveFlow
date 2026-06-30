@@ -1,9 +1,7 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
 import { submitTimeOffRequest, type SubmitRequestState } from "@/app/actions";
 import { SHIFT_PRESETS, shiftPresetFor, type ShiftPresetValue } from "@/src/lib/shift-presets";
 import { IconPlus, IconX } from "./icons";
@@ -25,8 +23,6 @@ const initialState: SubmitRequestState = {
   status: "idle",
   message: ""
 };
-
-gsap.registerPlugin(useGSAP);
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -70,27 +66,41 @@ export function RequestForm() {
     ));
   }
 
-  useGSAP(() => {
+  useEffect(() => {
     if (makeupRows.length <= previousRowCount.current) {
       previousRowCount.current = makeupRows.length;
       return;
     }
 
-    const mm = gsap.matchMedia();
+    let cleanup: (() => void) | undefined;
+    let active = true;
 
-    mm.add("(prefers-reduced-motion: no-preference)", () => {
-      gsap.from(".makeup-plan-row:last-child", {
-        autoAlpha: 0,
-        y: -10,
-        scale: 0.98,
-        duration: 0.28,
-        ease: "power2.out",
-      });
-    }, formRef);
+    import("gsap").then(({ default: gsap }) => {
+      if (!active || !formRef.current) return;
+
+      const context = gsap.context(() => {
+        const mm = gsap.matchMedia();
+
+        mm.add("(prefers-reduced-motion: no-preference)", () => {
+          gsap.from(".makeup-plan-row:last-child", {
+            autoAlpha: 0,
+            y: -10,
+            scale: 0.98,
+            duration: 0.28,
+            ease: "power2.out",
+          });
+        });
+      }, formRef);
+
+      cleanup = () => context.revert();
+    });
 
     previousRowCount.current = makeupRows.length;
-    return () => mm.revert();
-  }, { scope: formRef, dependencies: [makeupRows.length] });
+    return () => {
+      active = false;
+      cleanup?.();
+    };
+  }, [makeupRows.length]);
 
   return (
     <form action={formAction} className="panel form-panel" ref={formRef}>
