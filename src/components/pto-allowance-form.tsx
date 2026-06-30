@@ -10,30 +10,32 @@ export function PtoAllowanceForm({ profile, balance }: { profile: UserProfile; b
   return (
     <form action={updatePtoAllowanceAction} className="balance-row">
       <input type="hidden" name="employeeId" value={profile.id} />
-      <div>
+      <div className="balance-row-identity">
         <strong title={profile.fullName}>{profile.fullName}</strong>
         <span title={profile.email}>{profile.email}</span>
       </div>
-      <label>
-        Annual PTO
-        <input
-          name="annualAllowanceHours"
-          type="number"
-          min="0"
-          step="0.25"
-          defaultValue={allowance}
-          required
-        />
-      </label>
-      <div className="balance-row-meta">
-        <span>Used</span>
-        <strong>{used}h</strong>
+      <div className="balance-row-controls">
+        <label>
+          Annual PTO
+          <input
+            name="annualAllowanceHours"
+            type="number"
+            min="0"
+            step="0.25"
+            defaultValue={allowance}
+            required
+          />
+        </label>
+        <div className="balance-row-meta">
+          <span>Used</span>
+          <strong>{used}h</strong>
+        </div>
+        <div className="balance-row-meta">
+          <span>Left</span>
+          <strong>{Number(remaining.toFixed(2))}h</strong>
+        </div>
+        <PendingSubmitButton pendingLabel="Saving...">Save</PendingSubmitButton>
       </div>
-      <div className="balance-row-meta">
-        <span>Left</span>
-        <strong>{Number(remaining.toFixed(2))}h</strong>
-      </div>
-      <PendingSubmitButton pendingLabel="Saving...">Save</PendingSubmitButton>
     </form>
   );
 }
