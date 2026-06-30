@@ -9,7 +9,7 @@ export function LoginButton() {
   const [loading, setLoading] = useState(false);
 
   return (
-    <Button
+    <button
       className="auth-google-button"
       disabled={loading}
       onClick={async () => {
@@ -23,8 +23,8 @@ export function LoginButton() {
       type="button"
     >
       {loading ? <span className="spinner" aria-hidden="true" /> : <IconGoogle />}
-      {loading ? "Opening Google..." : "Continue with Google"}
-    </Button>
+      <span>{loading ? "Opening Google..." : "Continue with Google"}</span>
+    </button>
   );
 }
 

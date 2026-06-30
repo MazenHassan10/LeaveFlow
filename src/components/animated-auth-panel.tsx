@@ -17,18 +17,25 @@ export function AnimatedAuthPanel({ children }: { children: React.ReactNode }) {
 
         mm.add("(prefers-reduced-motion: no-preference)", () => {
           const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+          const authItems = gsap.utils.toArray<HTMLElement>(".auth-panel > *");
 
           tl.from(".auth-panel", {
             autoAlpha: 0,
             y: 20,
             scale: 0.96,
             duration: 0.55,
-          }).from(".auth-panel > *", {
-            autoAlpha: 0,
-            y: 12,
-            duration: 0.34,
-            stagger: 0.06,
-          }, "-=0.22");
+            clearProps: "opacity,visibility,transform",
+          });
+
+          if (authItems.length) {
+            tl.from(authItems, {
+              autoAlpha: 0,
+              y: 12,
+              duration: 0.34,
+              stagger: 0.06,
+              clearProps: "opacity,visibility,transform",
+            }, "-=0.22");
+          }
         });
       }, scope);
 

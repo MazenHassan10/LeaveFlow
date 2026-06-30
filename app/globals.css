@@ -757,11 +757,25 @@ nav a:hover .nav-icon {
 }
 
 .auth-panel .auth-google-button {
-  display: inline-flex;
+  position: relative;
+  z-index: 1;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
-  color: var(--color-neutral-900);
+  min-height: 48px;
+  color: var(--color-neutral-900) !important;
   background: linear-gradient(135deg, var(--color-primary-400), var(--color-success-500));
   box-shadow: var(--shadow-md);
+  opacity: 1;
+  visibility: visible;
+}
+
+.auth-panel .auth-google-button svg,
+.auth-panel .auth-google-button span {
+  color: inherit;
+  -webkit-text-fill-color: currentColor;
 }
 
 
