@@ -1,7 +1,7 @@
 import type { UserProfile } from "@/src/lib/app-data";
 import { isAdmin } from "@/src/lib/app-data";
 import { SignOutButton } from "./auth-buttons";
-import { IconBriefcase, IconShield, IconChartBar, IconChevronLeft } from "./icons";
+import { IconBriefcase, IconShield, IconChartBar, IconChevronLeft, LeaveFlowLogo } from "./icons";
 
 function initialsFor(name: string) {
   return name
@@ -18,7 +18,7 @@ export function Sidebar({ profile }: { profile: UserProfile }) {
       <input type="checkbox" id="sidebar-toggle" className="sr-only" />
       <div className="sidebar-header">
         <div className="brand">
-          <span>LF</span>
+          <span><LeaveFlowLogo /></span>
           <div className="sidebar-label">
             <strong>LeaveFlow</strong>
             <small>Hours, approvals, make-up work</small>

@@ -3,6 +3,7 @@ import { PageHeader } from "./page-header";
 import { MetricCard } from "./metric-card";
 import { AdminRequestCard } from "./admin-request-card";
 import { UserRoleForm } from "./user-role-form";
+import { PtoAllowanceForm } from "./pto-allowance-form";
 import { CardList } from "./card-list";
 
 export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
@@ -40,6 +41,16 @@ export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
           </CardList>
         </section>
       </div>
+      <section className="panel">
+        <h2>PTO allowances</h2>
+        <CardList empty="No editable employee balances yet.">
+          {editableProfiles
+            .filter((profile) => profile.role === "Employee")
+            .map((profile) => (
+              <PtoAllowanceForm key={profile.id} profile={profile} balance={snapshot.balances[profile.id]} />
+            ))}
+        </CardList>
+      </section>
     </section>
   );
 }

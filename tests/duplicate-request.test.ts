@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { UserProfile } from "../src/lib/app-data";
+import { shiftPresetFor } from "../src/lib/shift-presets";
 
 process.env.DATABASE_URL = "";
 
@@ -52,12 +53,13 @@ assert.equal(
 );
 
 function form(reason = "Same reason", makeupEnd = "14:00") {
+  const firstTwo = shiftPresetFor("first-two");
   const data = new FormData();
   data.set("requestType", "Additional Time Off");
   data.set("reason", reason);
   data.set("segmentDate", "2026-08-01");
-  data.set("segmentStart", "09:00");
-  data.set("segmentEnd", "11:00");
+  data.set("segmentStart", firstTwo.startTime);
+  data.set("segmentEnd", firstTwo.endTime);
   data.append("makeupDate", "2026-08-08");
   data.append("makeupStart", "12:00");
   data.append("makeupEnd", makeupEnd);

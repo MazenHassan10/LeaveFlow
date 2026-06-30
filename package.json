@@ -7,14 +7,16 @@
     "dev": "next dev --webpack -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "test": "node tests/pto.test.mjs && bun tests/makeup-plan.test.ts && bun tests/delete-request.test.ts && bun tests/duplicate-request.test.ts"
+    "test": "node tests/pto.test.mjs && bun tests/makeup-plan.test.ts && bun tests/delete-request.test.ts && bun tests/duplicate-request.test.ts && bun tests/pto-allowance.test.ts"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
     "@types/node": "^26.0.1",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "better-auth": "^1.6.22",
+    "gsap": "^3.15.0",
     "kysely": "^0.29.2",
     "next": "^16.2.9",
     "pg": "^8.22.0",

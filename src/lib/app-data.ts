@@ -448,6 +448,68 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
   await audit(actor.email, "admin.profile_updated", "user_profile", id);
 }
 
+function normalizeAllowanceHours(value: string | number) {
+  const allowance = Number(value);
+  if (!Number.isFinite(allowance) || allowance < 0) {
+    throw new Error("PTO allowance must be a valid non-negative number.");
+  }
+  return Number(allowance.toFixed(2));
+}
+
+function currentBalanceYear() {
+  return new Date().getFullYear();
+}
+
+function yearEnd(year: number) {
+  return `${year}-12-31`;
+}
+
+export async function updatePtoAllowance(actor: UserProfile, employeeId: string, annualAllowanceHours: string | number) {
+  if (!isAdmin(actor)) throw new Error("Admin access required.");
+
+  const allowance = normalizeAllowanceHours(annualAllowanceHours);
+  const calendarYear = currentBalanceYear();
+
+  if (!pool) {
+    const profile = memory.profiles.find((item) => item.id === employeeId);
+    if (!profile) throw new Error("Employee profile not found.");
+
+    const balance = memory.balances[employeeId] || {
+      employeeId,
+      calendarYear,
+      annualAllowanceHours: allowance,
+      usedHours: 0,
+      remainingHours: allowance,
+      expiresOn: yearEnd(calendarYear)
+    };
+
+    memory.balances[employeeId] = {
+      ...balance,
+      calendarYear,
+      annualAllowanceHours: allowance,
+      remainingHours: Number((allowance - balance.usedHours).toFixed(2)),
+      expiresOn: balance.expiresOn || yearEnd(calendarYear)
+    };
+    recalculateMemoryPtoBalance(employeeId, calendarYear);
+
+    await audit(actor.email, "admin.pto_allowance_updated", "pto_balance", employeeId);
+    return;
+  }
+
+  const profile = await pool.query("select id from user_profiles where id = $1", [employeeId]);
+  if (!profile.rows[0]) throw new Error("Employee profile not found.");
+
+  await pool.query(
+    `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
+     values ($1, $2, $3, 0, $4)
+     on conflict (employee_id, calendar_year) do update
+       set annual_allowance_hours = excluded.annual_allowance_hours`,
+    [employeeId, calendarYear, allowance, yearEnd(calendarYear)]
+  );
+
+  await audit(actor.email, "admin.pto_allowance_updated", "pto_balance", employeeId);
+}
+
 export async function createTimeOffRequest(actor: UserProfile, formData: FormData): Promise<CreateRequestResult> {
   if (actor.status !== "Active") throw new Error("Active profile required.");
   const requestType = String(formData.get("requestType")) as RequestType;

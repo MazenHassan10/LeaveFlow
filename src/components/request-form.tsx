@@ -1,18 +1,32 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { submitTimeOffRequest, type SubmitRequestState } from "@/app/actions";
+import { SHIFT_PRESETS, shiftPresetFor, type ShiftPresetValue } from "@/src/lib/shift-presets";
 import { IconPlus, IconX } from "./icons";
 
 type MakeupRow = {
   id: number;
+  preset: ShiftPresetValue;
+  startTime: string;
+  endTime: string;
+};
+
+type TimeSelection = {
+  preset: ShiftPresetValue;
+  startTime: string;
+  endTime: string;
 };
 
 const initialState: SubmitRequestState = {
   status: "idle",
   message: ""
 };
+
+gsap.registerPlugin(useGSAP);
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -26,19 +40,60 @@ function SubmitButton() {
 }
 
 export function RequestForm() {
-  const [makeupRows, setMakeupRows] = useState<MakeupRow[]>([{ id: 1 }]);
+  const [timeOff, setTimeOff] = useState<TimeSelection>({ preset: "custom", startTime: "", endTime: "" });
+  const [makeupRows, setMakeupRows] = useState<MakeupRow[]>([{ id: 1, preset: "custom", startTime: "", endTime: "" }]);
   const [state, formAction] = useActionState(submitTimeOffRequest, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  const previousRowCount = useRef(makeupRows.length);
 
   function addMakeupRow() {
-    setMakeupRows((rows) => [...rows, { id: Math.max(...rows.map((row) => row.id)) + 1 }]);
+    setMakeupRows((rows) => [
+      ...rows,
+      { id: Math.max(...rows.map((row) => row.id)) + 1, preset: "custom", startTime: "", endTime: "" }
+    ]);
   }
 
   function removeMakeupRow(id: number) {
     setMakeupRows((rows) => rows.filter((row) => row.id !== id));
   }
 
+  function applyTimeOffPreset(value: ShiftPresetValue) {
+    const preset = shiftPresetFor(value);
+    setTimeOff({ preset: preset.value, startTime: preset.startTime, endTime: preset.endTime });
+  }
+
+  function applyMakeupPreset(id: number, value: ShiftPresetValue) {
+    const preset = shiftPresetFor(value);
+    setMakeupRows((rows) => rows.map((row) => row.id === id
+      ? { ...row, preset: preset.value, startTime: preset.startTime, endTime: preset.endTime }
+      : row
+    ));
+  }
+
+  useGSAP(() => {
+    if (makeupRows.length <= previousRowCount.current) {
+      previousRowCount.current = makeupRows.length;
+      return;
+    }
+
+    const mm = gsap.matchMedia();
+
+    mm.add("(prefers-reduced-motion: no-preference)", () => {
+      gsap.from(".makeup-plan-row:last-child", {
+        autoAlpha: 0,
+        y: -10,
+        scale: 0.98,
+        duration: 0.28,
+        ease: "power2.out",
+      });
+    }, formRef);
+
+    previousRowCount.current = makeupRows.length;
+    return () => mm.revert();
+  }, { scope: formRef, dependencies: [makeupRows.length] });
+
   return (
-    <form action={formAction} className="panel form-panel">
+    <form action={formAction} className="panel form-panel" ref={formRef}>
       <h2>New request</h2>
       {state.status !== "idle" ? (
         <p className={`notice ${state.status === "error" ? "warning" : "success"}`}>{state.message}</p>
@@ -56,10 +111,43 @@ export function RequestForm() {
         <textarea name="reason" placeholder="Brief written request" />
       </label>
       <h3>Time off</h3>
-      <div className="field-grid">
+      <div className="field-grid shift-grid">
         <label>Date <input name="segmentDate" type="date" required /></label>
-        <label>From <input name="segmentStart" type="time" required /></label>
-        <label>To <input name="segmentEnd" type="time" required /></label>
+        <label>
+          Shift
+          <select
+            value={timeOff.preset}
+            onChange={(event) => applyTimeOffPreset(event.target.value as ShiftPresetValue)}
+          >
+            {SHIFT_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {preset.label}{preset.hours ? ` (${preset.hours}h)` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          From
+          <input
+            name="segmentStart"
+            type="time"
+            required
+            readOnly={timeOff.preset !== "custom"}
+            value={timeOff.startTime}
+            onChange={(event) => setTimeOff((current) => ({ ...current, startTime: event.target.value }))}
+          />
+        </label>
+        <label>
+          To
+          <input
+            name="segmentEnd"
+            type="time"
+            required
+            readOnly={timeOff.preset !== "custom"}
+            value={timeOff.endTime}
+            onChange={(event) => setTimeOff((current) => ({ ...current, endTime: event.target.value }))}
+          />
+        </label>
       </div>
       <div className="split">
         <h3>Make-up plan</h3>
@@ -71,10 +159,47 @@ export function RequestForm() {
       <div className="makeup-plan-rows">
         {makeupRows.map((row) => (
           <div className="makeup-plan-row" key={row.id}>
-            <div className="field-grid">
+            <div className="field-grid shift-grid">
               <label>Date <input name="makeupDate" type="date" /></label>
-              <label>From <input name="makeupStart" type="time" /></label>
-              <label>To <input name="makeupEnd" type="time" /></label>
+              <label>
+                Shift
+                <select
+                  value={row.preset}
+                  onChange={(event) => applyMakeupPreset(row.id, event.target.value as ShiftPresetValue)}
+                >
+                  {SHIFT_PRESETS.map((preset) => (
+                    <option key={preset.value} value={preset.value}>
+                      {preset.label}{preset.hours ? ` (${preset.hours}h)` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                From
+                <input
+                  name="makeupStart"
+                  type="time"
+                  readOnly={row.preset !== "custom"}
+                  value={row.startTime}
+                  onChange={(event) => setMakeupRows((rows) => rows.map((item) => item.id === row.id
+                    ? { ...item, startTime: event.target.value }
+                    : item
+                  ))}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  name="makeupEnd"
+                  type="time"
+                  readOnly={row.preset !== "custom"}
+                  value={row.endTime}
+                  onChange={(event) => setMakeupRows((rows) => rows.map((item) => item.id === row.id
+                    ? { ...item, endTime: event.target.value }
+                    : item
+                  ))}
+                />
+              </label>
             </div>
             {makeupRows.length > 1 ? (
               <button

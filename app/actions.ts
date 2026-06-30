@@ -8,6 +8,7 @@ import {
   deleteRequest,
   ensureProfile,
   setRequestStatus,
+  updatePtoAllowance,
   updateProfile,
   verifyMakeup
 } from "@/src/lib/app-data";
@@ -54,6 +55,16 @@ export async function updateUserProfileAction(formData: FormData) {
     String(formData.get("profileId")),
     String(formData.get("role")) as AppRole,
     String(formData.get("status")) as ProfileStatus
+  );
+  revalidatePath("/");
+}
+
+export async function updatePtoAllowanceAction(formData: FormData) {
+  const actor = await currentProfile();
+  await updatePtoAllowance(
+    actor,
+    String(formData.get("employeeId")),
+    String(formData.get("annualAllowanceHours"))
   );
   revalidatePath("/");
 }

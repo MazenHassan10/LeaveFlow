@@ -154,6 +154,22 @@ export function IconGoogle() {
   );
 }
 
+export function LeaveFlowLogo({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="LeaveFlow">
+      <rect x="3" y="3" width="34" height="34" rx="8" fill="#00C2FF" />
+      <path d="M31.5 3H37v34H3v-5.4C14.8 29.5 25.4 18.6 31.5 3Z" fill="#B6FF4D" />
+      <path
+        d="M11 11h8.3c5.7 0 9.7 3.6 9.7 8.9 0 5.2-4 8.9-9.7 8.9H11V11Z"
+        fill="#11131A"
+      />
+      <path d="M16.1 15.4v9h3.1c2.9 0 4.9-1.8 4.9-4.5s-2-4.5-4.9-4.5h-3.1Z" fill="#FFFFFF" />
+      <path d="M10 29c9.9-1.1 16.2-5.8 20-13.8" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M25.6 13.5h5v5" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function IconAlertTriangle() {
   return (
     <svg {...defaultProps}>
