@@ -12,7 +12,7 @@ import { Badge } from "./ui/badge";
 import { buttonVariants } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { cn } from "@/src/lib/utils";
-import { formatDateLabelInLosAngeles } from "@/src/lib/app-time";
+import { formatDateLabelInLosAngeles, formatTimeRange12Hour, losAngelesDate } from "@/src/lib/app-time";
 
 function dayNumber(date: string) {
   return Number(date.slice(8, 10));
@@ -29,6 +29,7 @@ function weekdayLabel(index: number) {
 export function ReportCalendar({ snapshot, month }: { snapshot: AppSnapshot; month?: string }) {
   const currentMonth = parseMonthParam(month);
   const days = buildMonthDays(currentMonth);
+  const today = losAngelesDate();
   const eventsByDate = groupEventsByDate(buildReportCalendarEvents(snapshot));
   const eventDates = days.filter((date) => sameMonth(date, currentMonth) && eventsByDate[date]?.length);
 
@@ -62,7 +63,10 @@ export function ReportCalendar({ snapshot, month }: { snapshot: AppSnapshot; mon
           {days.map((date) => {
             const events = eventsByDate[date] || [];
             return (
-              <div className={`calendar-day ${sameMonth(date, currentMonth) ? "" : "is-muted"}`} key={date}>
+              <div
+                className={cn("calendar-day", !sameMonth(date, currentMonth) && "is-muted", date === today && "is-today")}
+                key={date}
+              >
                 <div className="calendar-day-number">{dayNumber(date)}</div>
                 <div className="calendar-events">
                   {events.map((event) => (
@@ -71,7 +75,7 @@ export function ReportCalendar({ snapshot, month }: { snapshot: AppSnapshot; mon
                         {event.type === "off" ? "Off" : "Make-up"}
                       </Badge>
                       <span title={event.employeeEmail}>{event.employeeName}</span>
-                      <small>{event.startTime}-{event.endTime} · {event.hours}h</small>
+                      <small>{formatTimeRange12Hour(event.startTime, event.endTime)} · {event.hours}h</small>
                     </div>
                   ))}
                 </div>
@@ -89,7 +93,7 @@ export function ReportCalendar({ snapshot, month }: { snapshot: AppSnapshot; mon
                     {event.type === "off" ? "Off" : "Make-up"}
                   </Badge>
                   <span>{event.employeeName}</span>
-                  <small>{event.startTime}-{event.endTime} · {event.hours}h</small>
+                  <small>{formatTimeRange12Hour(event.startTime, event.endTime)} · {event.hours}h</small>
                 </div>
               ))}
             </div>

@@ -1,5 +1,6 @@
 import type { PtoBalance, UserProfile } from "@/src/lib/app-data";
 import { updatePtoAllowanceAction } from "@/app/actions";
+import { PendingSubmitButton } from "./pending-submit-button";
 
 export function PtoAllowanceForm({ profile, balance }: { profile: UserProfile; balance?: PtoBalance }) {
   const allowance = balance?.annualAllowanceHours ?? 48;
@@ -32,7 +33,7 @@ export function PtoAllowanceForm({ profile, balance }: { profile: UserProfile; b
         <span>Left</span>
         <strong>{Number(remaining.toFixed(2))}h</strong>
       </div>
-      <button type="submit">Save</button>
+      <PendingSubmitButton pendingLabel="Saving...">Save</PendingSubmitButton>
     </form>
   );
 }

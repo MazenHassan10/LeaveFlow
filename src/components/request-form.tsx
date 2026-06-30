@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
 import { submitTimeOffRequest, type SubmitRequestState } from "@/app/actions";
 import { SHIFT_PRESETS, shiftPresetFor, type ShiftPresetValue } from "@/src/lib/shift-presets";
 import { IconPlus, IconX } from "./icons";
+import { PendingSubmitButton } from "./pending-submit-button";
+import { TimeSelect } from "./time-select";
 
 type MakeupRow = {
   id: number;
@@ -23,17 +24,6 @@ const initialState: SubmitRequestState = {
   status: "idle",
   message: ""
 };
-
-function SubmitButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <button type="submit" disabled={pending}>
-      {pending ? <span className="spinner" aria-hidden="true" /> : null}
-      {pending ? "Submitting..." : "Submit request"}
-    </button>
-  );
-}
 
 export function RequestForm() {
   const [timeOff, setTimeOff] = useState<TimeSelection>({ preset: "custom", startTime: "", endTime: "" });
@@ -138,24 +128,22 @@ export function RequestForm() {
         </label>
         <label>
           From
-          <input
+          <TimeSelect
             name="segmentStart"
-            type="time"
             required
-            readOnly={timeOff.preset !== "custom"}
+            disabled={timeOff.preset !== "custom"}
             value={timeOff.startTime}
-            onChange={(event) => setTimeOff((current) => ({ ...current, startTime: event.target.value }))}
+            onChange={(value) => setTimeOff((current) => ({ ...current, startTime: value }))}
           />
         </label>
         <label>
           To
-          <input
+          <TimeSelect
             name="segmentEnd"
-            type="time"
             required
-            readOnly={timeOff.preset !== "custom"}
+            disabled={timeOff.preset !== "custom"}
             value={timeOff.endTime}
-            onChange={(event) => setTimeOff((current) => ({ ...current, endTime: event.target.value }))}
+            onChange={(value) => setTimeOff((current) => ({ ...current, endTime: value }))}
           />
         </label>
       </div>
@@ -186,26 +174,26 @@ export function RequestForm() {
               </label>
               <label>
                 From
-                <input
+                <TimeSelect
                   name="makeupStart"
-                  type="time"
-                  readOnly={row.preset !== "custom"}
+                  range="full-day"
+                  disabled={row.preset !== "custom"}
                   value={row.startTime}
-                  onChange={(event) => setMakeupRows((rows) => rows.map((item) => item.id === row.id
-                    ? { ...item, startTime: event.target.value }
+                  onChange={(value) => setMakeupRows((rows) => rows.map((item) => item.id === row.id
+                    ? { ...item, startTime: value }
                     : item
                   ))}
                 />
               </label>
               <label>
                 To
-                <input
+                <TimeSelect
                   name="makeupEnd"
-                  type="time"
-                  readOnly={row.preset !== "custom"}
+                  range="full-day"
+                  disabled={row.preset !== "custom"}
                   value={row.endTime}
-                  onChange={(event) => setMakeupRows((rows) => rows.map((item) => item.id === row.id
-                    ? { ...item, endTime: event.target.value }
+                  onChange={(value) => setMakeupRows((rows) => rows.map((item) => item.id === row.id
+                    ? { ...item, endTime: value }
                     : item
                   ))}
                 />
@@ -224,7 +212,7 @@ export function RequestForm() {
           </div>
         ))}
       </div>
-      <SubmitButton />
+      <PendingSubmitButton pendingLabel="Submitting...">Submit request</PendingSubmitButton>
     </form>
   );
 }

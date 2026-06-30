@@ -4,7 +4,7 @@ import { EmployeeProfileCard } from "./employee-profile-card";
 import { StatusBadge } from "./status-badge";
 import { CardList } from "./card-list";
 import { ReportCalendar } from "./report-calendar";
-import { formatTimestampInLosAngeles } from "@/src/lib/app-time";
+import { formatTimeRange12Hour, formatTimestampInLosAngeles } from "@/src/lib/app-time";
 
 function nameFor(snapshot: AppSnapshot, id: string) {
   return snapshot.profiles.find((profile) => profile.id === id)?.fullName || "Unknown employee";
@@ -34,7 +34,7 @@ export function Reports({ snapshot, month }: { snapshot: AppSnapshot; month?: st
             {makeupEntries.map(({ request, entry }) => (
               <div className="list-card" key={entry.id}>
                 <strong>{nameFor(snapshot, request.employeeId)}</strong>
-                <span>{entry.date} · {entry.startTime}-{entry.endTime} · {entry.plannedHours}h</span>
+                <span>{entry.date} · {formatTimeRange12Hour(entry.startTime, entry.endTime)} · {entry.plannedHours}h</span>
                 <StatusBadge value={entry.verificationStatus} />
                 {entry.verifiedBy ? <small>Verified by {entry.verifiedBy}</small> : null}
               </div>

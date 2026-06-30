@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { UserProfile } from "@/src/lib/app-data";
 import { SignOutButton } from "./auth-buttons";
 import { IconBriefcase, IconShield, IconChartBar, IconChevronLeft, LeaveFlowLogo } from "./icons";
@@ -15,7 +16,17 @@ function initialsFor(name: string) {
     .join("") || "LF";
 }
 
-export function Sidebar({ profile, canAccessAdmin }: { profile: UserProfile; canAccessAdmin: boolean }) {
+export function Sidebar({
+  profile,
+  canAccessAdmin,
+  collapsed,
+  onCollapsedChange
+}: {
+  profile: UserProfile;
+  canAccessAdmin: boolean;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+}) {
   const pathname = usePathname();
 
   const links = [
@@ -25,8 +36,7 @@ export function Sidebar({ profile, canAccessAdmin }: { profile: UserProfile; can
   ];
 
   return (
-    <aside className="sidebar">
-      <input type="checkbox" id="sidebar-toggle" className="sr-only" />
+    <aside className={`sidebar ${collapsed ? "is-collapsed" : ""}`}>
       <div className="sidebar-header">
         <div className="brand">
           <span><LeaveFlowLogo /></span>
@@ -35,9 +45,15 @@ export function Sidebar({ profile, canAccessAdmin }: { profile: UserProfile; can
             <small>Hours, approvals, make-up work</small>
           </div>
         </div>
-        <label htmlFor="sidebar-toggle" className="sidebar-collapse-btn" aria-label="Toggle sidebar">
+        <button
+          className="sidebar-collapse-btn"
+          type="button"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-pressed={collapsed}
+          onClick={() => onCollapsedChange(!collapsed)}
+        >
           <IconChevronLeft />
-        </label>
+        </button>
       </div>
       <nav aria-label="Main navigation">
         {links.map((link) => (
@@ -63,4 +79,19 @@ export function Sidebar({ profile, canAccessAdmin }: { profile: UserProfile; can
       </div>
     </aside>
   );
+}
+
+export function usePersistedSidebarState() {
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    setCollapsed(window.localStorage.getItem("leaveflow-sidebar-collapsed") === "true");
+  }, []);
+
+  function updateCollapsed(nextCollapsed: boolean) {
+    setCollapsed(nextCollapsed);
+    window.localStorage.setItem("leaveflow-sidebar-collapsed", String(nextCollapsed));
+  }
+
+  return [collapsed, updateCollapsed] as const;
 }

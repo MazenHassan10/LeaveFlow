@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "LeaveFlow",
   description: "Hour-based PTO requests, approvals, make-up plans, and reporting.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export const viewport: Viewport = {

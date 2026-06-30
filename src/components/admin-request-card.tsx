@@ -2,6 +2,8 @@ import type { TimeOffRequest, UserProfile } from "@/src/lib/app-data";
 import { setRequestStatusAction, verifyMakeupAction } from "@/app/actions";
 import { StatusBadge } from "./status-badge";
 import { DeleteRequestForm } from "./delete-request-form";
+import { PendingSubmitButton } from "./pending-submit-button";
+import { formatTimeRange12Hour } from "@/src/lib/app-time";
 
 export function AdminRequestCard({ request, profiles }: { request: TimeOffRequest; profiles: UserProfile[] }) {
   const profile = profiles.find((item) => item.id === request.employeeId);
@@ -21,28 +23,28 @@ export function AdminRequestCard({ request, profiles }: { request: TimeOffReques
         <form action={setRequestStatusAction}>
           <input type="hidden" name="requestId" value={request.id} />
           <input type="hidden" name="status" value="Approved" />
-          <button disabled={request.status !== "Pending"}>Approve</button>
+          <PendingSubmitButton disabled={request.status !== "Pending"} pendingLabel="Approving...">Approve</PendingSubmitButton>
         </form>
         <form action={setRequestStatusAction}>
           <input type="hidden" name="requestId" value={request.id} />
           <input type="hidden" name="status" value="Rejected" />
-          <button className="secondary" disabled={request.status !== "Pending"}>Reject</button>
+          <PendingSubmitButton className="secondary" disabled={request.status !== "Pending"} pendingLabel="Rejecting...">Reject</PendingSubmitButton>
         </form>
         <DeleteRequestForm requestId={request.id} />
       </div>
       {request.makeupEntries.map((entry) => (
         <div className="makeup-line" key={entry.id}>
-          <span>{entry.date} · {entry.startTime}-{entry.endTime} · {entry.plannedHours}h</span>
+          <span>{entry.date} · {formatTimeRange12Hour(entry.startTime, entry.endTime)} · {entry.plannedHours}h</span>
           <StatusBadge value={entry.verificationStatus} />
           <form action={verifyMakeupAction}>
             <input type="hidden" name="entryId" value={entry.id} />
             <input type="hidden" name="status" value="Worked" />
-            <button className="secondary">Worked</button>
+            <PendingSubmitButton className="secondary" pendingLabel="Saving...">Worked</PendingSubmitButton>
           </form>
           <form action={verifyMakeupAction}>
             <input type="hidden" name="entryId" value={entry.id} />
             <input type="hidden" name="status" value="Not Worked" />
-            <button className="secondary">Not worked</button>
+            <PendingSubmitButton className="secondary" pendingLabel="Saving...">Not worked</PendingSubmitButton>
           </form>
         </div>
       ))}

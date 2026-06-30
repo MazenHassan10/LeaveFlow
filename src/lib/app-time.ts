@@ -65,3 +65,16 @@ export function formatDateLabelInLosAngeles(date: string) {
     day: "numeric"
   }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
+
+export function formatTime12Hour(time: string) {
+  const [hourValue, minuteValue] = time.split(":").map(Number);
+  if (!Number.isFinite(hourValue) || !Number.isFinite(minuteValue)) return time;
+
+  const period = hourValue >= 12 ? "PM" : "AM";
+  const hour = hourValue % 12 || 12;
+  return `${hour}:${String(minuteValue).padStart(2, "0")} ${period}`;
+}
+
+export function formatTimeRange12Hour(startTime: string, endTime: string) {
+  return `${formatTime12Hour(startTime)}-${formatTime12Hour(endTime)}`;
+}

@@ -1,5 +1,6 @@
 import type { UserProfile } from "@/src/lib/app-data";
 import { updateUserProfileAction } from "@/app/actions";
+import { PendingSubmitButton } from "./pending-submit-button";
 
 export function UserRoleForm({ profile }: { profile: UserProfile }) {
   return (
@@ -18,7 +19,7 @@ export function UserRoleForm({ profile }: { profile: UserProfile }) {
         <option>Active</option>
         <option>Disabled</option>
       </select>
-      <button type="submit">Save</button>
+      <PendingSubmitButton pendingLabel="Saving...">Save</PendingSubmitButton>
     </form>
   );
 }

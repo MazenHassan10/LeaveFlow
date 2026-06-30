@@ -376,6 +376,18 @@ button:disabled:hover {
   animation: spin var(--duration-slow) linear infinite;
 }
 
+.time-select {
+  display: block;
+  min-width: 0;
+}
+
+.time-select select {
+  width: 100%;
+  min-width: 0;
+  padding-left: var(--space-3);
+  padding-right: 34px;
+}
+
 .secondary, button.secondary {
   color: var(--ink);
   background: var(--surface-raised);
@@ -587,9 +599,14 @@ nav a:hover .nav-icon {
   place-items: center;
   width: 28px;
   height: 28px;
+  min-height: 28px;
+  padding: 0;
   flex-shrink: 0;
+  border: 0;
   border-radius: var(--radius-full);
   color: rgba(255, 255, 255, 0.62);
+  background: transparent;
+  box-shadow: none;
   cursor: pointer;
   transition: all var(--duration-normal) var(--ease-out);
 }
@@ -597,6 +614,8 @@ nav a:hover .nav-icon {
 .sidebar-collapse-btn:hover {
   color: var(--color-neutral-0);
   background: rgba(255, 255, 255, 0.1);
+  transform: none;
+  box-shadow: none;
 }
 
 .sidebar-collapse-btn svg {
@@ -607,11 +626,11 @@ nav a:hover .nav-icon {
   transition: opacity var(--duration-normal) var(--ease-out);
 }
 
-.sidebar:has(#sidebar-toggle:checked) .sidebar-collapse-btn svg {
+.sidebar.is-collapsed .sidebar-collapse-btn svg {
   transform: rotate(180deg);
 }
 
-.sidebar:has(#sidebar-toggle:checked) .sidebar-label {
+.sidebar.is-collapsed .sidebar-label {
   opacity: 0;
   width: 0;
   height: 0;
@@ -619,33 +638,33 @@ nav a:hover .nav-icon {
   position: absolute;
 }
 
-.sidebar:has(#sidebar-toggle:checked) {
+.sidebar.is-collapsed {
   padding: var(--space-4);
   align-items: center;
 }
 
-.sidebar:has(#sidebar-toggle:checked) .sidebar-header {
+.sidebar.is-collapsed .sidebar-header {
   flex-direction: column;
   gap: var(--space-3);
 }
 
-.sidebar:has(#sidebar-toggle:checked) nav a {
+.sidebar.is-collapsed nav a {
   justify-content: center;
   padding: var(--space-3);
 }
 
-.sidebar:has(#sidebar-toggle:checked) .signed-in {
+.sidebar.is-collapsed .signed-in {
   justify-items: center;
 }
 
-.sidebar:has(#sidebar-toggle:checked) .signed-in button {
+.sidebar.is-collapsed .signed-in button {
   padding: 0;
   width: 40px;
   height: 40px;
   min-height: 40px;
 }
 
-.shell:has(#sidebar-toggle:checked) {
+.shell.is-collapsed {
   grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
 }
 
@@ -735,6 +754,14 @@ nav a:hover .nav-icon {
   min-height: 48px;
   font-size: var(--text-base);
   border-radius: var(--radius-lg);
+}
+
+.auth-panel .auth-google-button {
+  display: inline-flex;
+  width: 100%;
+  color: var(--color-neutral-900);
+  background: linear-gradient(135deg, var(--color-primary-400), var(--color-success-500));
+  box-shadow: var(--shadow-md);
 }
 
 
@@ -1221,6 +1248,20 @@ nav a:hover .nav-icon {
   background: rgba(255, 252, 244, 0.58);
 }
 
+.calendar-day.is-today {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(0, 194, 255, 0.18), rgba(182, 255, 77, 0.16)),
+    var(--surface);
+  box-shadow: inset 0 0 0 2px var(--color-primary-500);
+}
+
+.calendar-day.is-today .calendar-day-number {
+  color: var(--color-neutral-900);
+  background: linear-gradient(135deg, var(--color-primary-400), var(--color-success-500));
+  box-shadow: var(--shadow-primary);
+}
+
 .calendar-day-number {
   width: 28px;
   height: 28px;
@@ -1485,11 +1526,35 @@ nav a:hover .nav-icon {
     grid-template-columns: 1fr;
   }
 
+  .shell.is-collapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: static;
     height: auto;
     border-right: 0;
     border-bottom: 2px solid rgba(0, 194, 255, 0.25);
+  }
+
+  .sidebar.is-collapsed {
+    align-items: stretch;
+    padding: var(--space-6);
+  }
+
+  .sidebar.is-collapsed .sidebar-label {
+    position: static;
+    width: auto;
+    height: auto;
+    opacity: 1;
+  }
+
+  .sidebar.is-collapsed .sidebar-header {
+    flex-direction: row;
+  }
+
+  .sidebar.is-collapsed nav a {
+    justify-content: center;
   }
 
   .grid.two, .profile-grid {

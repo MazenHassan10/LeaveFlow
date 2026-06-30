@@ -21,7 +21,11 @@ export function BalanceRing({ used, total, remaining }: { used: number; total: n
         const mm = gsap.matchMedia();
 
         mm.add("(prefers-reduced-motion: no-preference)", () => {
-          gsap.fromTo(".ring-fill", {
+          const ringFill = gsap.utils.toArray<HTMLElement>(".ring-fill");
+          const ringValue = gsap.utils.toArray<HTMLElement>(".ring-value");
+          const statRows = gsap.utils.toArray<HTMLElement>(".balance-stat-row");
+
+          if (ringFill.length) gsap.fromTo(ringFill, {
             strokeDashoffset: CIRCUMFERENCE,
           }, {
             strokeDashoffset: offset,
@@ -29,7 +33,7 @@ export function BalanceRing({ used, total, remaining }: { used: number; total: n
             ease: "power3.out",
           });
 
-          gsap.from(".ring-value", {
+          if (ringValue.length) gsap.from(ringValue, {
             autoAlpha: 0,
             scale: 0.86,
             duration: 0.45,
@@ -37,7 +41,7 @@ export function BalanceRing({ used, total, remaining }: { used: number; total: n
             delay: 0.18,
           });
 
-          gsap.from(".balance-stat-row", {
+          if (statRows.length) gsap.from(statRows, {
             autoAlpha: 0,
             x: 14,
             duration: 0.35,
@@ -48,8 +52,10 @@ export function BalanceRing({ used, total, remaining }: { used: number; total: n
         });
 
         mm.add("(prefers-reduced-motion: reduce)", () => {
-          gsap.set(".ring-fill", { strokeDashoffset: offset });
-          gsap.set(".ring-value, .balance-stat-row", { autoAlpha: 1 });
+          const ringFill = gsap.utils.toArray<HTMLElement>(".ring-fill");
+          const visibleItems = gsap.utils.toArray<HTMLElement>(".ring-value, .balance-stat-row");
+          if (ringFill.length) gsap.set(ringFill, { strokeDashoffset: offset });
+          if (visibleItems.length) gsap.set(visibleItems, { autoAlpha: 1 });
         });
       }, ref);
 

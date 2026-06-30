@@ -2,6 +2,7 @@
 
 import { deleteRequestAction } from "@/app/actions";
 import { IconTrash } from "./icons";
+import { PendingSubmitButton } from "./pending-submit-button";
 
 export function DeleteRequestForm({ requestId }: { requestId: string }) {
   return (
@@ -13,10 +14,10 @@ export function DeleteRequestForm({ requestId }: { requestId: string }) {
       }}
     >
       <input type="hidden" name="requestId" value={requestId} />
-      <button className="btn-danger" type="submit">
+      <PendingSubmitButton className="btn-danger" pendingLabel="Deleting...">
         <IconTrash />
         Delete
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }

@@ -386,7 +386,31 @@ export async function getEmployeeSnapshot(employeeId: string): Promise<AppSnapsh
 }
 
 export async function getAdminSnapshot() {
-  return getSnapshot();
+  if (!pool) {
+    const snapshot = cloneMemorySnapshot({ includeAudit: false });
+    snapshot.auditEvents = [];
+    return snapshot;
+  }
+
+  const [profiles, balances, requests, segments, makeupEntries] = await Promise.all([
+    pool.query("select * from user_profiles order by protected_owner desc, full_name asc"),
+    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances"),
+    pool.query("select * from time_off_requests order by submitted_at desc"),
+    pool.query("select * from time_off_request_segments order by request_date asc, start_time asc"),
+    pool.query("select * from makeup_plan_entries order by makeup_date asc, start_time asc")
+  ]);
+
+  const balanceMap: Record<string, PtoBalance> = {};
+  balances.rows.forEach((row) => {
+    balanceMap[row.employee_id] = mapBalance(row);
+  });
+
+  return {
+    profiles: profiles.rows.map(mapProfile),
+    balances: balanceMap,
+    requests: mapRequestRows(requests.rows, segments.rows, makeupEntries.rows),
+    auditEvents: []
+  };
 }
 
 export async function getReportsSnapshot() {
