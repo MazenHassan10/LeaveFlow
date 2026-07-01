@@ -2,6 +2,8 @@ import { createHash } from "crypto";
 import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
 import { formatCivilDate, losAngelesDate, losAngelesYear, yearInLosAngeles } from "./app-time";
+import { buildReportCalendarEvents } from "./report-calendar";
+import { sendNewRequestEmail, sendRequestDecisionEmail } from "./email";
 import {
   AppRole,
   MakeupStatus,
@@ -119,6 +121,10 @@ export type CreateRequestResult = {
 
 const pool = process.env.DATABASE_URL ? new Pool({ connectionString: normalizeDatabaseUrl(process.env.DATABASE_URL) }) : null;
 
+type EmailNotificationStatus = "Sending" | "Sent" | "Failed";
+
+const memoryEmailNotifications = new Set<string>();
+
 const memory: AppSnapshot = {
   profiles: [
     {
@@ -135,6 +141,10 @@ const memory: AppSnapshot = {
   requests: [],
   auditEvents: []
 };
+
+function notificationKey(notificationType: string, eventKey: string, recipientEmail: string) {
+  return `${notificationType}:${eventKey}:${recipientEmail.toLowerCase()}`;
+}
 
 function uuid() {
   return crypto.randomUUID();
@@ -421,6 +431,109 @@ export function isAdmin(profile: UserProfile) {
   return profile.role === "Admin" && profile.status === "Active";
 }
 
+export type RequestDetails = {
+  request: TimeOffRequest;
+  employee: UserProfile;
+};
+
+export async function getActiveAdminProfiles() {
+  if (!pool) return memory.profiles.filter(isAdmin);
+
+  const result = await pool.query(
+    "select * from user_profiles where role = 'Admin' and status = 'Active' order by protected_owner desc, full_name asc"
+  );
+  return result.rows.map(mapProfile);
+}
+
+export async function getRequestDetails(requestId: string): Promise<RequestDetails | null> {
+  if (!pool) {
+    const request = memory.requests.find((item) => item.id === requestId);
+    if (!request) return null;
+    const employee = memory.profiles.find((profile) => profile.id === request.employeeId);
+    return employee ? { request: structuredClone(request), employee: structuredClone(employee) } : null;
+  }
+
+  const [request, segments, makeupEntries] = await Promise.all([
+    pool.query("select * from time_off_requests where id = $1", [requestId]),
+    pool.query("select * from time_off_request_segments where request_id = $1 order by request_date asc, start_time asc", [requestId]),
+    pool.query("select * from makeup_plan_entries where request_id = $1 order by makeup_date asc, start_time asc", [requestId])
+  ]);
+  if (!request.rows[0]) return null;
+
+  const employee = await pool.query("select * from user_profiles where id = $1", [request.rows[0].employee_id]);
+  if (!employee.rows[0]) return null;
+
+  return {
+    request: mapRequest(request.rows[0], segments.rows.map(mapSegment), makeupEntries.rows.map(mapMakeupEntry)),
+    employee: mapProfile(employee.rows[0])
+  };
+}
+
+export async function getApprovedEventsForDate(date: string) {
+  const snapshot = await getSnapshot();
+  return buildReportCalendarEvents(snapshot).filter((event) => event.date === date);
+}
+
+export async function claimEmailNotification(notificationType: string, eventKey: string, recipientEmail: string) {
+  if (!pool) {
+    const key = notificationKey(notificationType, eventKey, recipientEmail);
+    if (memoryEmailNotifications.has(key)) return false;
+    memoryEmailNotifications.add(key);
+    return true;
+  }
+
+  const result = await pool.query(
+    `insert into email_notifications (event_key, notification_type, recipient_email, status)
+     values ($1, $2, $3, 'Sending')
+     on conflict (event_key, notification_type, recipient_email) do nothing
+     returning id`,
+    [eventKey, notificationType, recipientEmail.toLowerCase()]
+  );
+  return Boolean(result.rows[0]);
+}
+
+export async function markEmailNotification(
+  notificationType: string,
+  eventKey: string,
+  recipientEmail: string,
+  status: EmailNotificationStatus,
+  errorMessage?: string
+) {
+  if (!pool) return;
+
+  await pool.query(
+    `update email_notifications
+     set status = $1,
+         sent_at = case when $1 = 'Sent' then now() else sent_at end,
+         error_message = $2
+     where event_key = $3 and notification_type = $4 and recipient_email = $5`,
+    [status, errorMessage || null, eventKey, notificationType, recipientEmail.toLowerCase()]
+  );
+}
+
+async function notifyAdminsOfSubmittedRequest(employee: UserProfile, requestId: string) {
+  try {
+    const [admins, details] = await Promise.all([
+      getActiveAdminProfiles(),
+      getRequestDetails(requestId)
+    ]);
+    if (!details) return;
+    await sendNewRequestEmail(admins, employee, details.request);
+  } catch (error) {
+    console.error("Failed to send new request notification", error);
+  }
+}
+
+async function notifyEmployeeOfRequestDecision(requestId: string) {
+  try {
+    const details = await getRequestDetails(requestId);
+    if (!details) return;
+    await sendRequestDecisionEmail(details.employee, details.request);
+  } catch (error) {
+    console.error("Failed to send request decision notification", error);
+  }
+}
+
 function formValues(formData: FormData, name: string) {
   return formData.getAll(name).map((value) => String(value || "").trim());
 }
@@ -669,6 +782,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
       makeupEntries: makeupEntries.map((entry) => ({ id: uuid(), requestId, ...entry, verificationStatus: "Pending" }))
     });
     await audit(actor.email, "employee.request_submitted", "time_off_request", requestId);
+    await notifyAdminsOfSubmittedRequest(actor, requestId);
     return { status: "created" };
   }
 
@@ -703,6 +817,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
     }
     await client.query("commit");
     await audit(actor.email, "employee.request_submitted", "time_off_request", requestId);
+    await notifyAdminsOfSubmittedRequest(actor, requestId);
     return { status: "created" };
   } catch (error) {
     await client.query("rollback");
@@ -734,13 +849,17 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
       memory.balances[request.employeeId] = balance;
     }
     await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
+    await notifyEmployeeOfRequestDecision(requestId);
     return;
   }
   const client = await pool.connect();
   try {
     await client.query("begin");
     const request = await client.query("select * from time_off_requests where id = $1 for update", [requestId]);
-    if (!request.rows[0]) return;
+    if (!request.rows[0]) {
+      await client.query("commit");
+      return;
+    }
     await client.query(
       "update time_off_requests set status = $1, approver_email = $2, approved_at = now() where id = $3",
       [status, actor.email, requestId]
@@ -753,6 +872,7 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
     }
     await client.query("commit");
     await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
+    await notifyEmployeeOfRequestDecision(requestId);
   } catch (error) {
     await client.query("rollback");
     throw error;

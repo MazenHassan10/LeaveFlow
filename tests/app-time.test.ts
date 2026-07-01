@@ -5,9 +5,11 @@ import {
   formatDateLabelInLosAngeles,
   formatTime12Hour,
   formatTimeRange12Hour,
+  losAngelesHour,
   losAngelesDate,
   losAngelesMonth,
   losAngelesYear,
+  tomorrowInLosAngeles,
   yearInLosAngeles
 } from "../src/lib/app-time";
 
@@ -16,6 +18,8 @@ assert.equal(formatCivilDate(2026, 7, 4), "2026-07-04");
 assert.equal(losAngelesDate(new Date("2026-07-01T06:30:00.000Z")), "2026-06-30");
 assert.equal(losAngelesMonth(new Date("2026-07-01T06:30:00.000Z")), "2026-06");
 assert.equal(losAngelesYear(new Date("2027-01-01T07:30:00.000Z")), 2026);
+assert.equal(losAngelesHour(new Date("2026-07-01T15:00:00.000Z")), 8);
+assert.equal(tomorrowInLosAngeles(new Date("2026-07-01T15:00:00.000Z")), "2026-07-02");
 assert.equal(yearInLosAngeles("2027-01-01T07:30:00.000Z"), 2026);
 assert.equal(formatDateLabelInLosAngeles("2026-07-04"), "Jul 4");
 assert.equal(formatTime12Hour("09:00"), "9:00 AM");

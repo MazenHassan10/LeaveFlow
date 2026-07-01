@@ -106,6 +106,18 @@ create table public.admin_notifications (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.email_notifications (
+  id uuid primary key default gen_random_uuid(),
+  event_key text not null,
+  notification_type text not null,
+  recipient_email text not null,
+  status text not null check (status in ('Sending', 'Sent', 'Failed')),
+  sent_at timestamptz,
+  error_message text,
+  created_at timestamptz not null default now(),
+  unique (event_key, notification_type, recipient_email)
+);
+
 create table public.audit_events (
   id uuid primary key default gen_random_uuid(),
   actor_user_id uuid references public.user_profiles(id),
@@ -194,6 +206,7 @@ alter table public.time_off_requests enable row level security;
 alter table public.time_off_request_segments enable row level security;
 alter table public.makeup_plan_entries enable row level security;
 alter table public.admin_notifications enable row level security;
+alter table public.email_notifications enable row level security;
 alter table public.audit_events enable row level security;
 
 create policy "profiles own or admin read" on public.user_profiles
@@ -302,6 +315,10 @@ for update using (public.is_admin())
 with check (public.is_admin());
 
 create policy "admins manage notifications" on public.admin_notifications
+for all using (public.is_admin())
+with check (public.is_admin());
+
+create policy "admins manage email notifications" on public.email_notifications
 for all using (public.is_admin())
 with check (public.is_admin());
 

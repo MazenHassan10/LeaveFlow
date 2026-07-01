@@ -123,6 +123,19 @@ create table if not exists audit_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists email_notifications (
+  id uuid primary key default gen_random_uuid(),
+  event_key text not null,
+  notification_type text not null,
+  recipient_email text not null,
+  status text not null check (status in ('Sending', 'Sent', 'Failed')),
+  sent_at timestamptz,
+  error_message text,
+  created_at timestamptz not null default now(),
+  unique (event_key, notification_type, recipient_email)
+);
+
 create index if not exists idx_user_profiles_auth_user_id on user_profiles(auth_user_id);
 create index if not exists idx_time_off_requests_employee_status on time_off_requests(employee_id, status);
 create index if not exists idx_makeup_plan_entries_status on makeup_plan_entries(verification_status);
+create index if not exists idx_email_notifications_event on email_notifications(notification_type, event_key);

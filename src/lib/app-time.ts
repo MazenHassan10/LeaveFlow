@@ -39,9 +39,28 @@ export function losAngelesYear(date = new Date()) {
   return partsForDate(date).year;
 }
 
+export function losAngelesHour(date = new Date()) {
+  const value = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
+    hour: "2-digit",
+    hourCycle: "h23"
+  }).format(date);
+  return Number(value);
+}
+
 export function yearInLosAngeles(value: string | Date | null | undefined) {
   if (!value) return losAngelesYear();
   return losAngelesYear(value instanceof Date ? value : new Date(value));
+}
+
+export function addCivilDays(date: string, days: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day + days, 12));
+  return formatCivilDate(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate());
+}
+
+export function tomorrowInLosAngeles(date = new Date()) {
+  return addCivilDays(losAngelesDate(date), 1);
 }
 
 export function formatTimestampInLosAngeles(value: string | Date) {
