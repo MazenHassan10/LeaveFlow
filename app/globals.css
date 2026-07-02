@@ -1249,6 +1249,26 @@ nav a:hover .nav-icon {
   font-size: var(--text-sm);
 }
 
+.requested-time-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.requested-time-pill {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 194, 255, 0.25);
+  border-radius: var(--radius-full);
+  background: rgba(0, 194, 255, 0.08);
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+}
+
 .request-reason {
   display: -webkit-box;
   max-width: 100%;

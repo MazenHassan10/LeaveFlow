@@ -3,7 +3,7 @@ import { setRequestStatusAction, verifyMakeupAction } from "@/app/actions";
 import { StatusBadge } from "./status-badge";
 import { DeleteRequestForm } from "./delete-request-form";
 import { PendingSubmitButton } from "./pending-submit-button";
-import { formatTimeRange12Hour } from "@/src/lib/app-time";
+import { formatDateLabelInLosAngeles, formatTimeRange12Hour } from "@/src/lib/app-time";
 
 export function AdminRequestCard({ request, profiles }: { request: TimeOffRequest; profiles: UserProfile[] }) {
   const profile = profiles.find((item) => item.id === request.employeeId);
@@ -16,6 +16,15 @@ export function AdminRequestCard({ request, profiles }: { request: TimeOffReques
         <strong title={employeeName}>{employeeName}</strong>
         {employeeEmail ? <span title={employeeEmail}>{employeeEmail}</span> : null}
         <span>{request.requestType} · {request.totalRequestedHours}h requested · {request.totalMakeupHours}h make-up planned</span>
+        {request.segments.length ? (
+          <div className="requested-time-list" aria-label="Requested time off">
+            {request.segments.map((segment) => (
+              <span className="requested-time-pill" key={segment.id}>
+                {formatDateLabelInLosAngeles(segment.date)} · {formatTimeRange12Hour(segment.startTime, segment.endTime)} · {segment.requestedHours}h
+              </span>
+            ))}
+          </div>
+        ) : null}
         {request.reason ? <p className="request-reason" title={request.reason}>{request.reason}</p> : null}
       </div>
       <StatusBadge value={request.status} />
