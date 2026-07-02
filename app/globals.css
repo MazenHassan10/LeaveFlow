@@ -2122,66 +2122,122 @@ nav a:hover .nav-icon {
 /* ===== 18. Responsive ===== */
 
 @media (max-width: 1024px) {
-  .shell {
-    grid-template-columns: 1fr;
-  }
-
+  .shell,
   .shell.is-collapsed {
-    grid-template-columns: 1fr;
+    grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
   }
 
-  .sidebar {
-    position: static;
-    height: auto;
-    border-right: 0;
-    border-bottom: 2px solid rgba(0, 194, 255, 0.25);
-  }
-
+  .sidebar,
   .sidebar.is-collapsed {
-    align-items: stretch;
-    padding: var(--space-6);
+    position: sticky;
+    top: 0;
+    align-items: center;
+    gap: var(--space-4);
+    width: var(--sidebar-collapsed);
+    height: 100vh;
+    padding: var(--space-4);
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-right: 2px solid rgba(0, 194, 255, 0.25);
+    border-bottom: 0;
   }
 
-  .sidebar.is-collapsed .sidebar-label {
-    position: static;
-    width: auto;
-    height: auto;
-    opacity: 1;
-  }
-
+  .sidebar-header,
   .sidebar.is-collapsed .sidebar-header {
-    flex-direction: row;
+    display: grid;
+    justify-items: center;
+    width: 100%;
   }
 
-  .sidebar.is-collapsed nav a {
+  .sidebar .brand {
     justify-content: center;
   }
 
-  .grid.two, .profile-grid {
-    grid-template-columns: 1fr;
-  }
-
-  nav {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  nav a {
-    flex: 1;
-    justify-content: center;
-    text-align: center;
-    padding: var(--space-3);
-    color: rgba(255, 255, 255, 0.78);
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-md);
-  }
-
-  nav a[aria-current="page"] {
-    box-shadow: inset 0 -3px 0 var(--color-success-500);
+  .sidebar .sidebar-label,
+  .sidebar.is-collapsed .sidebar-label,
+  .sidebar .signed-in-meta {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    opacity: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .sidebar-collapse-btn {
     display: none;
+  }
+
+  .sidebar nav {
+    display: grid;
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  .sidebar nav a,
+  .sidebar.is-collapsed nav a,
+  .sidebar .signed-in button,
+  .sidebar.is-collapsed .signed-in button {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: var(--radius-md);
+    color: rgba(255, 255, 255, 0.78);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .sidebar nav a {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .sidebar nav a[aria-current="page"] {
+    box-shadow: inset 3px 0 0 var(--color-success-500);
+  }
+
+  .sidebar nav a .nav-icon {
+    width: 21px;
+    height: 21px;
+  }
+
+  .sidebar .signed-in,
+  .sidebar.is-collapsed .signed-in {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    margin-top: auto;
+    padding-top: var(--space-4);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .sidebar .avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sidebar .signed-in button:hover {
+    color: var(--color-neutral-0);
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: none;
+    transform: none;
+  }
+
+  .sidebar .signed-in button svg,
+  .sidebar.is-collapsed .signed-in button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .grid.two, .profile-grid {
+    grid-template-columns: 1fr;
   }
 
   .content {

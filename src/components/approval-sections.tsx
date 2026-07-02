@@ -11,7 +11,7 @@ import { IconChevronLeft } from "./icons";
 type GroupRefs = Record<ApprovalGroupKey, HTMLDivElement | null>;
 
 const DEFAULT_OPEN: Record<ApprovalGroupKey, boolean> = {
-  pending: true,
+  pending: false,
   approved: false,
   rejected: false,
 };
@@ -19,6 +19,7 @@ const DEFAULT_OPEN: Record<ApprovalGroupKey, boolean> = {
 export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
   const groups = buildApprovalGroups(snapshot.requests);
   const [openGroups, setOpenGroups] = useState(DEFAULT_OPEN);
+  const [renderedGroups, setRenderedGroups] = useState(DEFAULT_OPEN);
   const sectionRefs = useRef<GroupRefs>({ pending: null, approved: null, rejected: null });
   const initialized = useRef(false);
 
@@ -29,6 +30,9 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
   }
 
   function toggleGroup(key: ApprovalGroupKey) {
+    if (!openGroups[key]) {
+      setRenderedGroups((current) => ({ ...current, [key]: true }));
+    }
     setOpenGroups((current) => ({ ...current, [key]: !current[key] }));
   }
 
@@ -133,6 +137,7 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
     <div className="approval-sections">
       {groups.map((group) => {
         const isOpen = openGroups[group.key];
+        const shouldRenderGroup = isOpen || renderedGroups[group.key];
         const contentId = `approval-group-${group.key}`;
 
         return (
@@ -164,15 +169,15 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
               id={contentId}
             >
               <div className="approval-group-inner">
-                {group.requests.length ? (
+                {shouldRenderGroup && group.requests.length ? (
                   <div className="stack">
                     {group.requests.map((request) => (
                       <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} />
                     ))}
                   </div>
-                ) : (
+                ) : shouldRenderGroup ? (
                   <p className="empty">{group.empty}</p>
-                )}
+                ) : null}
               </div>
             </div>
           </section>

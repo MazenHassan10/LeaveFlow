@@ -33,11 +33,11 @@ export function AnimatedShell({ children }: { children: React.ReactNode }) {
         mm.add(
           {
             reduceMotion: "(prefers-reduced-motion: reduce)",
-            isDesktop: "(min-width: 1025px)",
+            isRailNavigation: "(min-width: 769px)",
           },
           (mediaContext) => {
             const reduceMotion = mediaContext.conditions?.reduceMotion;
-            const isDesktop = mediaContext.conditions?.isDesktop;
+            const isRailNavigation = mediaContext.conditions?.isRailNavigation;
 
             if (reduceMotion) {
               const visibleItems = items(".sidebar, .page-header, .metric, .summary-card, .panel, .request-card, .list-card, .profile-card, .status");
@@ -54,8 +54,8 @@ export function AnimatedShell({ children }: { children: React.ReactNode }) {
 
             timelineFrom(tl, ".sidebar", {
               autoAlpha: 0,
-              x: isDesktop ? -24 : 0,
-              y: isDesktop ? 0 : 16,
+              x: isRailNavigation ? -24 : 0,
+              y: isRailNavigation ? 0 : 16,
               duration: 0.55,
             });
             timelineFrom(tl, ".page-header", {
