@@ -16,8 +16,8 @@ const seed = {
   profiles: [
     {
       id: "owner",
-      email: ORIGINAL_ADMIN_EMAIL,
-      fullName: "Anusha Patel",
+      email: "admin@leaveflow.local",
+      fullName: "LeaveFlow Admin",
       role: "Admin",
       status: "Active",
       protectedOwner: true
@@ -92,11 +92,10 @@ function signIn(email, fullName) {
     state.profiles.push(profile);
     audit("user.login_pending_created", "user_profile", profile.id);
   }
-  if (normalized === ORIGINAL_ADMIN_EMAIL && (profile.role !== "Admin" || profile.status !== "Active")) {
-    profile.role = "Admin";
-    profile.status = "Active";
-    profile.protectedOwner = true;
-    audit("owner.bootstrap_admin", "user_profile", profile.id);
+  if (normalized === ORIGINAL_ADMIN_EMAIL && profile.protectedOwner) {
+    profile.role = "Employee";
+    profile.status = "Pending";
+    profile.protectedOwner = false;
   }
   if (!state.balances[profile.id] && profile.role === "Employee") {
     state.balances[profile.id] = {
@@ -259,10 +258,10 @@ function loginView() {
       <p>In production this button connects to Supabase Google Auth. This local build simulates the same role flow, including first-admin bootstrap and pending access.</p>
       <form id="login-form">
         <input name="fullName" placeholder="Full name" value="Anusha Patel" />
-        <input name="email" type="email" placeholder="Google email" value="${ORIGINAL_ADMIN_EMAIL}" />
+        <input name="email" type="email" placeholder="Google email" />
         <button>Continue with Google</button>
       </form>
-      <div class="hint">Try ${ORIGINAL_ADMIN_EMAIL} for Admin or a new email to see Access Pending.</div>
+      <div class="hint">New users wait for an admin to approve access.</div>
     </div>
   `);
 }

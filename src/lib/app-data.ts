@@ -130,8 +130,8 @@ const memory: AppSnapshot = {
     {
       id: "owner",
       authUserId: "owner",
-      email: ORIGINAL_ADMIN_EMAIL,
-      fullName: "Anusha Patel",
+      email: "admin@leaveflow.local",
+      fullName: "LeaveFlow Admin",
       role: "Admin",
       status: "Active",
       protectedOwner: true
@@ -292,10 +292,10 @@ export async function ensureProfile(user: AuthUser): Promise<UserProfile> {
       memory.profiles.push(profile);
       await audit(email, "user.profile_created", "user_profile", profile.id);
     }
-    if (email === ORIGINAL_ADMIN_EMAIL) {
-      profile.role = "Admin";
-      profile.status = "Active";
-      profile.protectedOwner = true;
+    if (email === ORIGINAL_ADMIN_EMAIL && profile.protectedOwner) {
+      profile.role = "Employee";
+      profile.status = "Pending";
+      profile.protectedOwner = false;
     }
     return profile;
   }
@@ -305,9 +305,9 @@ export async function ensureProfile(user: AuthUser): Promise<UserProfile> {
      values ($1, $2, $3, $4, $5, $6, case when $6 then now() else null end)
      on conflict (email) do update
        set auth_user_id = excluded.auth_user_id,
-           role = case when excluded.email = $7 then 'Admin' else user_profiles.role end,
-           status = case when excluded.email = $7 then 'Active' else user_profiles.status end,
-           protected_owner = user_profiles.protected_owner or excluded.protected_owner,
+           role = case when excluded.email = $7 and user_profiles.protected_owner then 'Employee' else user_profiles.role end,
+           status = case when excluded.email = $7 and user_profiles.protected_owner then 'Pending' else user_profiles.status end,
+           protected_owner = case when excluded.email = $7 then false else user_profiles.protected_owner or excluded.protected_owner end,
            updated_at = now()
      returning *`,
     [user.id, email, user.name || email, bootstrap.role, bootstrap.status, bootstrap.protectedOwner, ORIGINAL_ADMIN_EMAIL]

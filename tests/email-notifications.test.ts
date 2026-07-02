@@ -111,7 +111,7 @@ assert.match(reminderEmail.html, /Open reports/);
 assert.equal(shouldSendDayBeforeReminders(new Date("2026-07-01T15:00:00.000Z")), true);
 assert.equal(shouldSendDayBeforeReminders(new Date("2026-07-01T14:00:00.000Z")), false);
 
-const owner = await ensureProfile({ id: "email-owner", email: "apatel@scopeshealthcare.com", name: "Owner Admin" });
+const owner = await ensureProfile({ id: "email-owner", email: "admin@leaveflow.local", name: "Owner Admin" });
 const reminderEmployee = await ensureProfile({ id: "email-employee", email: "email.employee@example.com", name: "Email Employee" });
 await updateProfile(owner, reminderEmployee.id, "Employee", "Active");
 

@@ -13,9 +13,9 @@ assert.equal(calculateHours("09:00", "13:30"), 4.5);
 assert.equal(calculateHours("13:00", "09:00"), 0);
 
 const owner = getRoleForLogin(ORIGINAL_ADMIN_EMAIL);
-assert.equal(owner.role, "Admin");
-assert.equal(owner.status, "Active");
-assert.equal(canAccessAdmin(owner), true);
+assert.equal(owner.role, "Employee");
+assert.equal(owner.status, "Pending");
+assert.equal(canAccessAdmin(owner), false);
 
 const pending = getRoleForLogin("new.person@example.com");
 assert.equal(pending.status, "Pending");

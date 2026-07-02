@@ -28,7 +28,5 @@ export function isLateNotice(todayISO: string, firstDate: string) {
 }
 
 export function roleForEmail(email: string) {
-  return email.toLowerCase() === ORIGINAL_ADMIN_EMAIL
-    ? { role: "Admin" as AppRole, status: "Active" as ProfileStatus, protectedOwner: true }
-    : { role: "Employee" as AppRole, status: "Pending" as ProfileStatus, protectedOwner: false };
+  return { role: "Employee" as AppRole, status: "Pending" as ProfileStatus, protectedOwner: false };
 }

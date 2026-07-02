@@ -29,9 +29,6 @@ export function isLateNotice(todayISO, segments) {
 }
 
 export function getRoleForLogin(email, existingProfile) {
-  if (email.toLowerCase() === ORIGINAL_ADMIN_EMAIL) {
-    return { role: "Admin", status: "Active", protectedOwner: true };
-  }
   if (existingProfile) return existingProfile;
   return { role: "Employee", status: "Pending", protectedOwner: false };
 }
