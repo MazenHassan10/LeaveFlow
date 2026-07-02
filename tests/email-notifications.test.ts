@@ -60,6 +60,11 @@ assert.equal(newRequestEmail.subject, "New LeaveFlow request from Employee User"
 assert.match(newRequestEmail.text, /Family appointment/);
 assert.match(newRequestEmail.text, /9:00 AM-1:00 PM/);
 assert.match(newRequestEmail.text, /\/admin/);
+assert.match(newRequestEmail.html, /New request submitted/);
+assert.match(newRequestEmail.html, /Review in admin dashboard/);
+assert.match(newRequestEmail.html, /<table[^>]*>/);
+assert.match(newRequestEmail.html, /Family appointment/);
+assert.match(newRequestEmail.html, /Employee User/);
 
 const approvedEmail = buildRequestDecisionEmail(employee, {
   ...request,
@@ -70,6 +75,20 @@ assert.deepEqual(approvedEmail.to, ["employee@example.com"]);
 assert.equal(approvedEmail.subject, "Your LeaveFlow request was approved");
 assert.match(approvedEmail.text, /Approver: admin@example.com/);
 assert.match(approvedEmail.text, /\/employee/);
+assert.match(approvedEmail.html, /Request approved/);
+assert.match(approvedEmail.html, /View my requests/);
+assert.match(approvedEmail.html, /admin@example.com/);
+
+const rejectedEmail = buildRequestDecisionEmail(employee, {
+  ...request,
+  status: "Rejected",
+  approverEmail: "admin@example.com"
+});
+assert.equal(rejectedEmail.subject, "Your LeaveFlow request was rejected");
+assert.match(rejectedEmail.text, /Your LeaveFlow request was rejected/);
+assert.match(rejectedEmail.html, /Request rejected/);
+assert.match(rejectedEmail.html, /Rejected/);
+assert.match(rejectedEmail.html, /View my requests/);
 
 const reminderEmail = buildDayBeforeReminderEmail(admin, "2026-07-02", [
   {
@@ -86,6 +105,8 @@ const reminderEmail = buildDayBeforeReminderEmail(admin, "2026-07-02", [
 assert.deepEqual(reminderEmail.to, ["admin@example.com"]);
 assert.match(reminderEmail.text, /Make-up: Employee User/);
 assert.match(reminderEmail.text, /6:00 PM-8:00 PM/);
+assert.match(reminderEmail.html, /Approved events reminder/);
+assert.match(reminderEmail.html, /Open reports/);
 
 assert.equal(shouldSendDayBeforeReminders(new Date("2026-07-01T15:00:00.000Z")), true);
 assert.equal(shouldSendDayBeforeReminders(new Date("2026-07-01T14:00:00.000Z")), false);
