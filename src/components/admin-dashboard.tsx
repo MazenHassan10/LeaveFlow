@@ -1,10 +1,10 @@
 import type { AppSnapshot } from "@/src/lib/app-data";
 import { PageHeader } from "./page-header";
 import { MetricCard } from "./metric-card";
-import { AdminRequestCard } from "./admin-request-card";
 import { UserRoleForm } from "./user-role-form";
 import { PtoAllowanceForm } from "./pto-allowance-form";
 import { CardList } from "./card-list";
+import { ApprovalSections } from "./approval-sections";
 
 export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
   const requests = snapshot.requests;
@@ -26,11 +26,7 @@ export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
       <div className="grid two">
         <section className="panel">
           <h2>Time-off approvals</h2>
-          <CardList empty="No requests submitted.">
-            {requests.map((request) => (
-              <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} />
-            ))}
-          </CardList>
+          <ApprovalSections snapshot={snapshot} />
         </section>
         <section className="panel">
           <h2>User roles</h2>

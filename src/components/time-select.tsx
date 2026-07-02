@@ -1,5 +1,7 @@
 "use client";
 
+import { DropdownField } from "./dropdown-field";
+
 type TimeSelectProps = {
   name: string;
   value: string;
@@ -33,16 +35,16 @@ export function TimeSelect({ name, value, required, disabled, range = "shift", o
 
   return (
     <div className="time-select">
-      <input name={name} type="hidden" value={value} required={required} />
-      <select
-        aria-label={name}
+      <DropdownField
+        name={name}
+        ariaLabel={name}
         disabled={disabled}
+        required={required}
         value={selectedValue}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">Select time</option>
-        {timeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
+        options={timeOptions}
+        placeholder="Select time"
+        onChange={onChange}
+      />
     </div>
   );
 }

@@ -55,7 +55,7 @@ export function AnimatedShell({ children }: { children: React.ReactNode }) {
             timelineFrom(tl, ".sidebar", {
               autoAlpha: 0,
               x: isDesktop ? -24 : 0,
-              y: isDesktop ? 0 : -16,
+              y: isDesktop ? 0 : 16,
               duration: 0.55,
             });
             timelineFrom(tl, ".page-header", {

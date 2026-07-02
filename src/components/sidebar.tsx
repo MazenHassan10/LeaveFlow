@@ -60,6 +60,7 @@ export function Sidebar({
           <Link
             key={link.href}
             href={link.href}
+            aria-label={link.label}
             title={link.label}
             aria-current={pathname === link.href ? "page" : undefined}
           >

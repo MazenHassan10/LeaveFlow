@@ -3,12 +3,15 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { submitTimeOffRequest, type SubmitRequestState } from "@/app/actions";
 import { SHIFT_PRESETS, shiftPresetFor, type ShiftPresetValue } from "@/src/lib/shift-presets";
+import { DatePickerInput } from "./date-picker-input";
+import { DropdownField } from "./dropdown-field";
 import { IconPlus, IconX } from "./icons";
 import { PendingSubmitButton } from "./pending-submit-button";
 import { TimeSelect } from "./time-select";
 
 type MakeupRow = {
   id: number;
+  date: string;
   preset: ShiftPresetValue;
   startTime: string;
   endTime: string;
@@ -25,9 +28,22 @@ const initialState: SubmitRequestState = {
   message: ""
 };
 
+const requestTypeOptions = [
+  { value: "PTO", label: "PTO" },
+  { value: "Additional Time Off", label: "Additional Time Off" },
+  { value: "Emergency/Exception", label: "Emergency/Exception" },
+];
+
+const shiftPresetOptions = SHIFT_PRESETS.map((preset) => ({
+  value: preset.value,
+  label: `${preset.label}${preset.hours ? ` (${preset.hours}h)` : ""}`,
+}));
+
 export function RequestForm() {
+  const [requestType, setRequestType] = useState("PTO");
+  const [segmentDate, setSegmentDate] = useState("");
   const [timeOff, setTimeOff] = useState<TimeSelection>({ preset: "custom", startTime: "", endTime: "" });
-  const [makeupRows, setMakeupRows] = useState<MakeupRow[]>([{ id: 1, preset: "custom", startTime: "", endTime: "" }]);
+  const [makeupRows, setMakeupRows] = useState<MakeupRow[]>([{ id: 1, date: "", preset: "custom", startTime: "", endTime: "" }]);
   const [state, formAction] = useActionState(submitTimeOffRequest, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const previousRowCount = useRef(makeupRows.length);
@@ -35,7 +51,7 @@ export function RequestForm() {
   function addMakeupRow() {
     setMakeupRows((rows) => [
       ...rows,
-      { id: Math.max(...rows.map((row) => row.id)) + 1, preset: "custom", startTime: "", endTime: "" }
+      { id: Math.max(...rows.map((row) => row.id)) + 1, date: "", preset: "custom", startTime: "", endTime: "" }
     ]);
   }
 
@@ -100,11 +116,13 @@ export function RequestForm() {
       ) : null}
       <label>
         Request type
-        <select name="requestType">
-          <option>PTO</option>
-          <option>Additional Time Off</option>
-          <option>Emergency/Exception</option>
-        </select>
+        <DropdownField
+          name="requestType"
+          value={requestType}
+          options={requestTypeOptions}
+          placeholder="Choose request type"
+          onChange={setRequestType}
+        />
       </label>
       <label>
         Reason
@@ -112,19 +130,18 @@ export function RequestForm() {
       </label>
       <h3>Time off</h3>
       <div className="field-grid shift-grid">
-        <label>Date <input name="segmentDate" type="date" required /></label>
+        <label>
+          Date
+          <DatePickerInput name="segmentDate" required value={segmentDate} onChange={setSegmentDate} />
+        </label>
         <label>
           Shift
-          <select
+          <DropdownField
             value={timeOff.preset}
-            onChange={(event) => applyTimeOffPreset(event.target.value as ShiftPresetValue)}
-          >
-            {SHIFT_PRESETS.map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}{preset.hours ? ` (${preset.hours}h)` : ""}
-              </option>
-            ))}
-          </select>
+            options={shiftPresetOptions}
+            placeholder="Choose shift"
+            onChange={(value) => applyTimeOffPreset(value as ShiftPresetValue)}
+          />
         </label>
         <label>
           From
@@ -158,19 +175,25 @@ export function RequestForm() {
         {makeupRows.map((row) => (
           <div className="makeup-plan-row" key={row.id}>
             <div className="field-grid shift-grid">
-              <label>Date <input name="makeupDate" type="date" /></label>
+              <label>
+                Date
+                <DatePickerInput
+                  name="makeupDate"
+                  value={row.date}
+                  onChange={(value) => setMakeupRows((rows) => rows.map((item) => item.id === row.id
+                    ? { ...item, date: value }
+                    : item
+                  ))}
+                />
+              </label>
               <label>
                 Shift
-                <select
+                <DropdownField
                   value={row.preset}
-                  onChange={(event) => applyMakeupPreset(row.id, event.target.value as ShiftPresetValue)}
-                >
-                  {SHIFT_PRESETS.map((preset) => (
-                    <option key={preset.value} value={preset.value}>
-                      {preset.label}{preset.hours ? ` (${preset.hours}h)` : ""}
-                    </option>
-                  ))}
-                </select>
+                  options={shiftPresetOptions}
+                  placeholder="Choose shift"
+                  onChange={(value) => applyMakeupPreset(row.id, value as ShiftPresetValue)}
+                />
               </label>
               <label>
                 From

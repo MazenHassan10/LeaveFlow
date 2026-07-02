@@ -130,6 +130,10 @@ function mimeMessage(message: EmailMessage) {
 }
 
 export async function sendEmail(message: EmailMessage) {
+  if (process.env.DATABASE_URL === "") {
+    return { sent: false, skipped: true, reason: "in-memory-data-store" };
+  }
+
   const missing = missingGmailConfig();
   if (missing.length) {
     console.warn(`Skipping email send because Gmail is not configured: ${missing.join(", ")}`);
