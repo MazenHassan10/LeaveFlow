@@ -14,7 +14,9 @@ import {
   RequestType,
   calculateHours,
   isLateNotice,
-  roleForEmail
+  roleForEmail,
+  roleHasAdminAccess,
+  roleTracksPto
 } from "./pto";
 
 export type UserProfile = {
@@ -314,7 +316,7 @@ export async function ensureProfile(user: AuthUser): Promise<UserProfile> {
   );
   const profile = mapProfile(result.rows[0]);
 
-  if (profile.role === "Employee") {
+  if (roleTracksPto(profile.role)) {
     await pool.query(
       `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
        values ($1, extract(year from now())::int, $2, 0, make_date(extract(year from now())::int, 12, 31))
@@ -428,7 +430,7 @@ export async function getReportsSnapshot() {
 }
 
 export function isAdmin(profile: UserProfile) {
-  return profile.role === "Admin" && profile.status === "Active";
+  return roleHasAdminAccess(profile.role) && profile.status === "Active";
 }
 
 export type RequestDetails = {
@@ -440,7 +442,7 @@ export async function getActiveAdminProfiles() {
   if (!pool) return memory.profiles.filter(isAdmin);
 
   const result = await pool.query(
-    "select * from user_profiles where role = 'Admin' and status = 'Active' order by protected_owner desc, full_name asc"
+    "select * from user_profiles where role in ('Admin', 'Manager') and status = 'Active' order by protected_owner desc, full_name asc"
   );
   return result.rows.map(mapProfile);
 }
@@ -518,7 +520,10 @@ async function notifyAdminsOfSubmittedRequest(employee: UserProfile, requestId: 
       getRequestDetails(requestId)
     ]);
     if (!details) return;
-    await sendNewRequestEmail(admins, employee, details.request);
+    // A Manager is both an admin and an employee; don't email them about their own request.
+    const recipients = admins.filter((admin) => admin.id !== employee.id);
+    if (recipients.length === 0) return;
+    await sendNewRequestEmail(recipients, employee, details.request);
   } catch (error) {
     console.error("Failed to send new request notification", error);
   }
@@ -674,6 +679,17 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
     if (!profile || profile.protectedOwner) return;
     profile.role = role;
     profile.status = status;
+    if (roleTracksPto(role) && !memory.balances[id]) {
+      const calendarYear = currentBalanceYear();
+      memory.balances[id] = {
+        employeeId: id,
+        calendarYear,
+        annualAllowanceHours: PTO_ALLOWANCE_HOURS,
+        usedHours: 0,
+        remainingHours: PTO_ALLOWANCE_HOURS,
+        expiresOn: yearEnd(calendarYear)
+      };
+    }
     await audit(actor.email, "admin.profile_updated", "user_profile", id);
     return;
   }
@@ -683,6 +699,16 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
      where id = $4 and protected_owner = false`,
     [role, status, actor.id, id]
   );
+  // Ensure PTO-tracked roles (Employee, Manager) have a balance without waiting for re-login.
+  if (roleTracksPto(role)) {
+    const calendarYear = currentBalanceYear();
+    await pool.query(
+      `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
+       values ($1, $2, $3, 0, $4)
+       on conflict (employee_id, calendar_year) do nothing`,
+      [id, calendarYear, PTO_ALLOWANCE_HOURS, yearEnd(calendarYear)]
+    );
+  }
   await audit(actor.email, "admin.profile_updated", "user_profile", id);
 }
 
@@ -881,6 +907,7 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
   if (!pool) {
     const request = memory.requests.find((item) => item.id === requestId);
     if (!request) return;
+    if (request.employeeId === actor.id) throw new Error("You cannot approve your own request.");
     request.status = status;
     request.approverEmail = actor.email;
     request.approvedAt = new Date().toISOString();
@@ -908,6 +935,10 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
     if (!request.rows[0]) {
       await client.query("commit");
       return;
+    }
+    if (request.rows[0].employee_id === actor.id) {
+      await client.query("rollback");
+      throw new Error("You cannot approve your own request.");
     }
     await client.query(
       "update time_off_requests set status = $1, approver_email = $2, approved_at = now() where id = $3",
@@ -1014,6 +1045,7 @@ export async function verifyMakeup(actor: UserProfile, entryId: string, status: 
     for (const request of memory.requests) {
       const entry = request.makeupEntries.find((item) => item.id === entryId);
       if (entry) {
+        if (request.employeeId === actor.id) throw new Error("You cannot verify your own make-up hours.");
         entry.verificationStatus = status;
         entry.verifiedBy = actor.email;
         entry.verifiedAt = new Date().toISOString();
@@ -1021,6 +1053,16 @@ export async function verifyMakeup(actor: UserProfile, entryId: string, status: 
     }
     await audit(actor.email, `admin.makeup_${status.toLowerCase().replace(" ", "_")}`, "makeup_plan_entry", entryId);
     return;
+  }
+  const owner = await pool.query(
+    `select r.employee_id
+     from makeup_plan_entries e
+     join time_off_requests r on r.id = e.request_id
+     where e.id = $1`,
+    [entryId]
+  );
+  if (owner.rows[0]?.employee_id === actor.id) {
+    throw new Error("You cannot verify your own make-up hours.");
   }
   await pool.query(
     "update makeup_plan_entries set verification_status = $1, verified_by = $2, verified_at = now() where id = $3",

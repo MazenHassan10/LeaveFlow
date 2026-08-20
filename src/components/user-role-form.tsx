@@ -17,6 +17,7 @@ export function UserRoleForm({ profile }: { profile: UserProfile }) {
             Role
             <select name="role" defaultValue={profile.role}>
               <option>Employee</option>
+              <option>Manager</option>
               <option>Admin</option>
             </select>
           </label>

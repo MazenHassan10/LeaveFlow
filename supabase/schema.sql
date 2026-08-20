@@ -1,4 +1,4 @@
-create type public.app_role as enum ('Admin', 'Employee');
+create type public.app_role as enum ('Admin', 'Manager', 'Employee');
 create type public.user_status as enum ('Pending', 'Active', 'Disabled');
 create type public.request_type as enum ('PTO', 'Additional Time Off', 'Emergency/Exception');
 create type public.request_status as enum ('Pending', 'Approved', 'Rejected', 'Cancelled');

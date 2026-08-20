@@ -1,12 +1,13 @@
 "use client";
 
 import type { UserProfile } from "@/src/lib/app-data";
+import { roleHasAdminAccess } from "@/src/lib/pto";
 import { AnimatedShell } from "./animated-shell";
 import { Sidebar, usePersistedSidebarState } from "./sidebar";
 
 export function Shell({ profile, children }: { profile: UserProfile; children: React.ReactNode }) {
   const [collapsed, setCollapsed] = usePersistedSidebarState();
-  const canAccessAdmin = profile.role === "Admin" && profile.status === "Active";
+  const canAccessAdmin = roleHasAdminAccess(profile.role) && profile.status === "Active";
 
   return (
     <AnimatedShell>

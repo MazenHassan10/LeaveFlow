@@ -49,7 +49,7 @@ create table if not exists user_profiles (
   auth_user_id text unique references "user"(id) on delete set null,
   email text not null unique,
   full_name text not null,
-  role text not null check (role in ('Admin', 'Employee')) default 'Employee',
+  role text not null check (role in ('Admin', 'Manager', 'Employee')) default 'Employee',
   status text not null check (status in ('Pending', 'Active', 'Disabled')) default 'Pending',
   protected_owner boolean not null default false,
   role_assigned_by uuid references user_profiles(id),

@@ -2,8 +2,17 @@ export const ORIGINAL_ADMIN_EMAIL = "apatel@scopeshealthcare.com";
 export const PTO_ALLOWANCE_HOURS = 48;
 export const ADVANCE_NOTICE_DAYS = 14;
 
-export type AppRole = "Admin" | "Employee";
+export type AppRole = "Admin" | "Manager" | "Employee";
 export type ProfileStatus = "Pending" | "Active" | "Disabled";
+
+// A Manager has full admin privileges AND is tracked as an employee for PTO.
+export function roleHasAdminAccess(role: AppRole) {
+  return role === "Admin" || role === "Manager";
+}
+
+export function roleTracksPto(role: AppRole) {
+  return role === "Employee" || role === "Manager";
+}
 export type RequestStatus = "Pending" | "Approved" | "Rejected" | "Cancelled";
 export type RequestType = "PTO" | "Additional Time Off" | "Emergency/Exception";
 export type MakeupStatus = "Pending" | "Worked" | "Not Worked";

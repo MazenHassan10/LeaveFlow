@@ -1,4 +1,5 @@
 import type { AppSnapshot } from "@/src/lib/app-data";
+import { roleTracksPto } from "@/src/lib/pto";
 import { PageHeader } from "./page-header";
 import { MetricCard } from "./metric-card";
 import { UserRoleForm } from "./user-role-form";
@@ -41,7 +42,7 @@ export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
         <h2>PTO allowances</h2>
         <CardList empty="No editable employee balances yet.">
           {editableProfiles
-            .filter((profile) => profile.role === "Employee")
+            .filter((profile) => roleTracksPto(profile.role))
             .map((profile) => (
               <PtoAllowanceForm key={profile.id} profile={profile} balance={snapshot.balances[profile.id]} />
             ))}
