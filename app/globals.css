@@ -1595,6 +1595,22 @@ nav a:hover .nav-icon {
   min-width: 88px;
 }
 
+.user-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.user-row-actions .user-row-controls {
+  flex: 1 1 auto;
+}
+
+.user-row-actions > form:last-child {
+  flex: 0 0 auto;
+}
+
 
 /* ===== 11. Balance Visualization ===== */
 
@@ -2486,6 +2502,15 @@ nav a:hover .nav-icon {
   }
 
   .user-row-controls button {
+    width: 100%;
+  }
+
+  .user-row-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .user-row-actions > form:last-child button {
     width: 100%;
   }
 

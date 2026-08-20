@@ -686,6 +686,55 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
   await audit(actor.email, "admin.profile_updated", "user_profile", id);
 }
 
+export async function deleteProfile(actor: UserProfile, id: string) {
+  if (!isAdmin(actor)) throw new Error("Admin access required.");
+  if (actor.id === id) throw new Error("You cannot delete your own account.");
+
+  if (!pool) {
+    const profileIndex = memory.profiles.findIndex((item) => item.id === id);
+    if (profileIndex === -1 || memory.profiles[profileIndex].protectedOwner) return;
+
+    memory.profiles.splice(profileIndex, 1);
+    delete memory.balances[id];
+    memory.requests = memory.requests.filter((request) => request.employeeId !== id);
+
+    await audit(actor.email, "admin.profile_deleted", "user_profile", id);
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const target = await client.query(
+      "select auth_user_id from user_profiles where id = $1 and protected_owner = false for update",
+      [id]
+    );
+    if (target.rows.length === 0) {
+      await client.query("commit");
+      return;
+    }
+
+    const authUserId = target.rows[0].auth_user_id as string | null;
+
+    // Clear the self-referential FK (role_assigned_by has no ON DELETE action).
+    await client.query("update user_profiles set role_assigned_by = null where role_assigned_by = $1", [id]);
+    // Cascades pto_balances, time_off_requests, segments and makeup entries.
+    await client.query("delete from user_profiles where id = $1", [id]);
+    // Remove the Better Auth login identity (cascades session and account rows).
+    if (authUserId) {
+      await client.query('delete from "user" where id = $1', [authUserId]);
+    }
+
+    await client.query("commit");
+    await audit(actor.email, "admin.profile_deleted", "user_profile", id);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function normalizeAllowanceHours(value: string | number) {
   const allowance = Number(value);
   if (!Number.isFinite(allowance) || allowance < 0) {

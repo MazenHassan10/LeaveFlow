@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/src/lib/auth";
 import {
   createTimeOffRequest,
+  deleteProfile,
   deleteRequest,
   ensureProfile,
   setRequestStatus,
@@ -62,6 +63,12 @@ export async function updateUserProfileAction(formData: FormData) {
     String(formData.get("role")) as AppRole,
     String(formData.get("status")) as ProfileStatus
   );
+  revalidateDashboardRoutes();
+}
+
+export async function deleteUserProfileAction(formData: FormData) {
+  const actor = await currentProfile();
+  await deleteProfile(actor, String(formData.get("profileId")));
   revalidateDashboardRoutes();
 }
 
