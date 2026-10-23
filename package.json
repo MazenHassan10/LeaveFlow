@@ -8,7 +8,7 @@
     "dev": "next dev --webpack -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "test": "node tests/pto.test.mjs && bun tests/makeup-plan.test.ts && bun tests/delete-request.test.ts && bun tests/delete-user.test.ts && bun tests/manager-role.test.ts && bun tests/duplicate-request.test.ts && bun tests/pto-allowance.test.ts && bun tests/report-calendar.test.ts && bun tests/app-time.test.ts && bun tests/email-notifications.test.ts && bun tests/approval-groups.test.ts && bun tests/employee-profile-metrics.test.ts",
+    "test": "node tests/pto.test.mjs && bun tests/makeup-plan.test.ts && bun tests/delete-request.test.ts && bun tests/delete-user.test.ts && bun tests/manager-role.test.ts && bun tests/duplicate-request.test.ts && bun tests/pto-allowance.test.ts && bun tests/report-calendar.test.ts && bun tests/app-time.test.ts && bun tests/email-notifications.test.ts && bun tests/email-links.test.ts && bun tests/approval-groups.test.ts && bun tests/employee-profile-metrics.test.ts",
     "analyze": "ANALYZE=true next build --webpack",
     "perf:setup-browser": "playwright install chromium",
     "perf:routes": "bun scripts/perf-routes.mjs"

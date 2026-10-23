@@ -28,25 +28,24 @@ function isLocalhostUrl(url: string) {
   return /\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(url);
 }
 
-function resolveBaseUrl() {
-  // An explicitly configured public URL always wins (e.g. a custom domain).
-  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (explicit) return explicit;
+// Public production deployment. Emailed links are opened on phones and other
+// machines, so they must never point at localhost; local dev shares the
+// production database, so linking to production is correct from there too.
+export const PRODUCTION_APP_URL = "https://leave-flow-seven.vercel.app";
 
-  // On Vercel, the stable production domain so emailed links are publicly
-  // reachable even when BETTER_AUTH_URL is left pointing at localhost.
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  if (vercelProd) return `https://${vercelProd}`;
+export function resolveBaseUrl(env: Record<string, string | undefined> = process.env) {
+  const vercelProd = env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const candidates = [
+    env.NEXT_PUBLIC_APP_URL,
+    vercelProd ? `https://${vercelProd}` : undefined,
+    env.BETTER_AUTH_URL,
+  ];
 
-  // A non-localhost auth URL is a real deployment domain.
-  const authUrl = process.env.BETTER_AUTH_URL?.trim();
-  if (authUrl && !isLocalhostUrl(authUrl)) return authUrl;
-
-  // Current deployment URL (preview builds) before falling back to localhost.
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) return `https://${vercelUrl}`;
-
-  return authUrl || "http://localhost:3000";
+  for (const candidate of candidates) {
+    const url = candidate?.trim();
+    if (url && !isLocalhostUrl(url)) return url;
+  }
+  return PRODUCTION_APP_URL;
 }
 
 function appUrl(path: string) {
