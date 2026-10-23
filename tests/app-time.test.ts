@@ -26,6 +26,8 @@ assert.equal(formatTime12Hour("09:00"), "9:00 AM");
 assert.equal(formatTime12Hour("13:00"), "1:00 PM");
 assert.equal(formatTime12Hour("00:00"), "12:00 AM");
 assert.equal(formatTime12Hour("12:00"), "12:00 PM");
+assert.equal(formatTime12Hour("24:00"), "12:00 AM"); // end-of-day marker reads as midnight
 assert.equal(formatTimeRange12Hour("09:00", "17:00"), "9:00 AM-5:00 PM");
+assert.equal(formatTimeRange12Hour("19:00", "24:00"), "7:00 PM-12:00 AM");
 
 console.log("App timezone tests passed.");

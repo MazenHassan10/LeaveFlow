@@ -24,8 +24,33 @@ function configuredSender() {
   return process.env.GMAIL_FROM_EMAIL?.trim() || "";
 }
 
+function isLocalhostUrl(url: string) {
+  return /\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(url);
+}
+
+function resolveBaseUrl() {
+  // An explicitly configured public URL always wins (e.g. a custom domain).
+  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit;
+
+  // On Vercel, the stable production domain so emailed links are publicly
+  // reachable even when BETTER_AUTH_URL is left pointing at localhost.
+  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (vercelProd) return `https://${vercelProd}`;
+
+  // A non-localhost auth URL is a real deployment domain.
+  const authUrl = process.env.BETTER_AUTH_URL?.trim();
+  if (authUrl && !isLocalhostUrl(authUrl)) return authUrl;
+
+  // Current deployment URL (preview builds) before falling back to localhost.
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) return `https://${vercelUrl}`;
+
+  return authUrl || "http://localhost:3000";
+}
+
 function appUrl(path: string) {
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "http://localhost:3000").replace(/\/$/, "");
+  const baseUrl = resolveBaseUrl().replace(/\/$/, "");
   return `${baseUrl}${path}`;
 }
 

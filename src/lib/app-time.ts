@@ -89,8 +89,10 @@ export function formatTime12Hour(time: string) {
   const [hourValue, minuteValue] = time.split(":").map(Number);
   if (!Number.isFinite(hourValue) || !Number.isFinite(minuteValue)) return time;
 
-  const period = hourValue >= 12 ? "PM" : "AM";
-  const hour = hourValue % 12 || 12;
+  // Normalize so an end-of-day marker like "24:00" reads as midnight, not noon.
+  const normalizedHour = ((hourValue % 24) + 24) % 24;
+  const period = normalizedHour >= 12 ? "PM" : "AM";
+  const hour = normalizedHour % 12 || 12;
   return `${hour}:${String(minuteValue).padStart(2, "0")} ${period}`;
 }
 
