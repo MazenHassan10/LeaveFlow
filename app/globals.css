@@ -1561,6 +1561,11 @@ nav a:hover .nav-icon {
   border-bottom: 1px solid var(--line-subtle);
 }
 
+.user-row-name {
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 .user-row strong {
   min-width: 0;
   font-weight: var(--weight-semibold);

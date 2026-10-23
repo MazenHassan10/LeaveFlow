@@ -672,13 +672,25 @@ async function lockDuplicatePayload(client: Pick<Pool, "query">, actor: UserProf
   await client.query("select pg_advisory_xact_lock($1::int, $2::int)", [firstKey, secondKey]);
 }
 
-export async function updateProfile(actor: UserProfile, id: string, role: AppRole, status: ProfileStatus) {
+const MAX_FULL_NAME_LENGTH = 100;
+
+export function normalizeFullName(value: string) {
+  const name = value.replace(/\s+/g, " ").trim();
+  if (!name) throw new Error("Name is required.");
+  if (name.length > MAX_FULL_NAME_LENGTH) throw new Error(`Name must be ${MAX_FULL_NAME_LENGTH} characters or fewer.`);
+  return name;
+}
+
+// Email is intentionally not editable here: it is the sign-in identity.
+export async function updateProfile(actor: UserProfile, id: string, role: AppRole, status: ProfileStatus, fullName?: string) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
+  const name = fullName === undefined ? undefined : normalizeFullName(fullName);
   if (!pool) {
     const profile = memory.profiles.find((item) => item.id === id);
     if (!profile || profile.protectedOwner) return;
     profile.role = role;
     profile.status = status;
+    if (name) profile.fullName = name;
     if (roleTracksPto(role) && !memory.balances[id]) {
       const calendarYear = currentBalanceYear();
       memory.balances[id] = {
@@ -695,9 +707,10 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
   }
   await pool.query(
     `update user_profiles
-     set role = $1, status = $2, role_assigned_by = $3, role_assigned_at = now(), updated_at = now()
+     set role = $1, status = $2, role_assigned_by = $3, role_assigned_at = now(), updated_at = now(),
+         full_name = coalesce($5, full_name)
      where id = $4 and protected_owner = false`,
-    [role, status, actor.id, id]
+    [role, status, actor.id, id, name ?? null]
   );
   // Ensure PTO-tracked roles (Employee, Manager) have a balance without waiting for re-login.
   if (roleTracksPto(role)) {

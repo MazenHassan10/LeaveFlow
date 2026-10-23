@@ -61,7 +61,8 @@ export async function updateUserProfileAction(formData: FormData) {
     actor,
     String(formData.get("profileId")),
     String(formData.get("role")) as AppRole,
-    String(formData.get("status")) as ProfileStatus
+    String(formData.get("status")) as ProfileStatus,
+    formData.has("fullName") ? String(formData.get("fullName")) : undefined
   );
   revalidateDashboardRoutes();
 }

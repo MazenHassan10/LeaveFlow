@@ -8,22 +8,35 @@ import { PendingSubmitButton } from "./pending-submit-button";
 
 export function UserRoleForm({ profile }: { profile: UserProfile }) {
   const router = useRouter();
+  const formId = `user-form-${profile.id}`;
 
   async function saveProfile(formData: FormData) {
     await updateUserProfileAction(formData);
     // Re-fetch the server components so the row (and derived lists) reflect
-    // the new role/status without a manual page refresh.
+    // the new name/role/status without a manual page refresh.
     router.refresh();
   }
 
   return (
     <div className="user-row">
       <div className="user-row-identity">
-        <strong title={profile.fullName}>{profile.fullName}</strong>
+        <label className="user-row-name">
+          Name
+          {/* Linked to the Save form by id; the email below is not editable. */}
+          <input
+            key={`name-${profile.fullName}`}
+            form={formId}
+            name="fullName"
+            defaultValue={profile.fullName}
+            required
+            maxLength={100}
+            autoComplete="off"
+          />
+        </label>
         <span title={profile.email}>{profile.email}</span>
       </div>
       <div className="user-row-actions">
-        <form action={saveProfile} className="user-row-controls">
+        <form id={formId} action={saveProfile} className="user-row-controls">
           <input type="hidden" name="profileId" value={profile.id} />
           <label>
             Role
