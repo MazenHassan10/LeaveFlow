@@ -12,7 +12,7 @@ const {
   updateProfile
 } = await import("../src/lib/app-data");
 const {
-  sendDayBeforeAdminReminders,
+  sendScheduledReminders,
   shouldSendDayBeforeReminders
 } = await import("../src/lib/reminders");
 
@@ -131,12 +131,16 @@ const reminderRequest = snapshot.requests.find((item) => item.employeeId === rem
 assert.ok(reminderRequest);
 await setRequestStatus(owner, reminderRequest.id, "Approved");
 
-const firstReminder = await sendDayBeforeAdminReminders(new Date("2026-07-01T15:00:00.000Z"));
+const firstReminder = await sendScheduledReminders(new Date("2026-07-01T15:00:00.000Z"));
 assert.equal(firstReminder.skipped, false);
-assert.equal(firstReminder.events, 1);
+const dayBefore = firstReminder.leads.find((lead) => lead.daysAhead === 1);
+assert.equal(dayBefore?.date, "2026-07-02");
+assert.equal(dayBefore?.events, 1);
 
-const secondReminder = await sendDayBeforeAdminReminders(new Date("2026-07-01T15:00:00.000Z"));
+// Re-running the same hour must not resend anything.
+const secondReminder = await sendScheduledReminders(new Date("2026-07-01T15:00:00.000Z"));
 assert.equal(secondReminder.skipped, false);
 assert.equal(secondReminder.sent, 0);
+assert.equal(secondReminder.failed, 0);
 
 console.log("Email notification tests passed.");

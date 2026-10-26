@@ -373,30 +373,39 @@ export function buildRequestDecisionEmail(employee: UserProfile, request: TimeOf
   };
 }
 
-export function buildDayBeforeReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[]): EmailMessage {
-  const eventLines = events.map((event) => {
-    const label = event.type === "off" ? "Off" : "Make-up";
-    return `- ${label}: ${event.employeeName} (${event.employeeEmail}), ${formatTimeRange12Hour(event.startTime, event.endTime)} (${event.hours}h)`;
-  });
+function reminderWhen(date: string, daysAhead: number) {
+  const label = formatDateLabelInLosAngeles(date);
+  return daysAhead === 1 ? `tomorrow (${label})` : `in ${daysAhead} days (${label})`;
+}
+
+function eventTypeLabel(event: ReportCalendarEvent) {
+  return event.type === "off" ? "Off" : "Make-up";
+}
+
+export function buildAdminReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[], daysAhead = 1): EmailMessage {
+  const when = reminderWhen(date, daysAhead);
+  const eventLines = events.map((event) =>
+    `- ${eventTypeLabel(event)}: ${event.employeeName} (${event.employeeEmail}), ${formatTimeRange12Hour(event.startTime, event.endTime)} (${event.hours}h)`
+  );
   const reportsUrl = appUrl("/reports");
   const text = [
     `Hi ${admin.fullName},`,
     "",
-    `Tomorrow (${formatDateLabelInLosAngeles(date)}) has approved LeaveFlow events:`,
+    `Approved LeaveFlow events ${when}:`,
     "",
     ...eventLines,
     "",
     `Open reports: ${reportsUrl}`
   ].join("\n");
   const html = renderEmailLayout({
-    eyebrow: "Tomorrow's schedule",
+    eyebrow: daysAhead === 1 ? "Tomorrow's schedule" : `Coming up in ${daysAhead} days`,
     title: "Approved events reminder",
     intro: `${formatDateLabelInLosAngeles(date)} has approved time off or make-up work scheduled.`,
     badge: `${events.length} event${events.length === 1 ? "" : "s"}`,
     body: [
       renderSection("Events", renderDataTable(
         [
-          { label: "Type", value: (event) => event.type === "off" ? "Off" : "Make-up" },
+          { label: "Type", value: (event) => eventTypeLabel(event) },
           { label: "Employee", value: (event) => `${event.employeeName} (${event.employeeEmail})` },
           { label: "Time", value: (event) => formatTimeRange12Hour(event.startTime, event.endTime) },
           { label: "Hours", value: (event) => `${event.hours}h`, align: "right" },
@@ -410,7 +419,64 @@ export function buildDayBeforeReminderEmail(admin: UserProfile, date: string, ev
 
   return {
     to: [admin.email],
-    subject: "LeaveFlow reminder: tomorrow's time off and make-up plans",
+    subject: daysAhead === 1
+      ? "LeaveFlow reminder: tomorrow's time off and make-up plans"
+      : `LeaveFlow reminder: time off and make-up plans in ${daysAhead} days`,
+    text,
+    html
+  };
+}
+
+// Kept for existing callers: the day-before admin digest.
+export function buildDayBeforeReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[]): EmailMessage {
+  return buildAdminReminderEmail(admin, date, events, 1);
+}
+
+export function buildEmployeeReminderEmail(
+  employee: { name: string; email: string },
+  date: string,
+  events: ReportCalendarEvent[],
+  daysAhead = 1
+): EmailMessage {
+  const when = reminderWhen(date, daysAhead);
+  const hasMakeup = events.some((event) => event.type === "makeup");
+  const hasOff = events.some((event) => event.type === "off");
+  const what = hasMakeup && hasOff ? "time off and make-up work" : hasMakeup ? "make-up work" : "time off";
+  const employeeUrl = appUrl("/employee");
+  const eventLines = events.map((event) =>
+    `- ${eventTypeLabel(event)}: ${formatTimeRange12Hour(event.startTime, event.endTime)} PT (${event.hours}h)`
+  );
+  const text = [
+    `Hi ${employee.name},`,
+    "",
+    `Reminder: you have approved ${what} ${when}:`,
+    "",
+    ...eventLines,
+    "",
+    `View your requests: ${employeeUrl}`
+  ].join("\n");
+  const html = renderEmailLayout({
+    eyebrow: daysAhead === 1 ? "Tomorrow" : `In ${daysAhead} days`,
+    title: hasMakeup ? "Make-up shift reminder" : "Time off reminder",
+    intro: `You have approved ${what} on ${formatDateLabelInLosAngeles(date)}. Times are Pacific Time.`,
+    badge: `${events.length} item${events.length === 1 ? "" : "s"}`,
+    body: [
+      renderSection("Your schedule", renderDataTable(
+        [
+          { label: "Type", value: (event) => eventTypeLabel(event) },
+          { label: "Time (PT)", value: (event) => formatTimeRange12Hour(event.startTime, event.endTime) },
+          { label: "Hours", value: (event) => `${event.hours}h`, align: "right" },
+        ],
+        events,
+        "Nothing scheduled."
+      )),
+      renderCta("View your requests", employeeUrl),
+    ].join(""),
+  });
+
+  return {
+    to: [employee.email],
+    subject: `LeaveFlow reminder: your ${what} ${daysAhead === 1 ? "tomorrow" : `in ${daysAhead} days`}`,
     text,
     html
   };
@@ -459,7 +525,9 @@ function mimeMessage(message: EmailMessage) {
   ].join("\r\n");
 }
 
-export async function sendEmail(message: EmailMessage) {
+export type EmailSendResult = { sent: boolean; skipped: boolean; reason?: string };
+
+export async function sendEmail(message: EmailMessage): Promise<EmailSendResult> {
   if (process.env.DATABASE_URL === "") {
     return { sent: false, skipped: true, reason: "in-memory-data-store" };
   }
@@ -500,4 +568,17 @@ export async function sendRequestDecisionEmail(employee: UserProfile, request: T
 
 export async function sendDayBeforeReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[]) {
   return sendEmail(buildDayBeforeReminderEmail(admin, date, events));
+}
+
+export async function sendAdminReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[], daysAhead: number) {
+  return sendEmail(buildAdminReminderEmail(admin, date, events, daysAhead));
+}
+
+export async function sendEmployeeReminderEmail(
+  employee: { name: string; email: string },
+  date: string,
+  events: ReportCalendarEvent[],
+  daysAhead: number
+) {
+  return sendEmail(buildEmployeeReminderEmail(employee, date, events, daysAhead));
 }

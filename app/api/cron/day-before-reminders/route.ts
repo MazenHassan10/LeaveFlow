@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sendDayBeforeAdminReminders } from "@/src/lib/reminders";
+import { sendScheduledReminders } from "@/src/lib/reminders";
 
 export const runtime = "nodejs";
 
@@ -15,6 +15,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await sendDayBeforeAdminReminders();
+  const result = await sendScheduledReminders();
   return NextResponse.json(result);
 }
