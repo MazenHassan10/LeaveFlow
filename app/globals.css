@@ -1722,16 +1722,26 @@ nav a:hover .nav-icon {
   margin: var(--space-2) 0 0;
 }
 
+/* Fixed columns (date | status | Worked | Not worked) so every row lines up regardless of text width. */
 .makeup-line {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px 128px 128px;
   align-items: center;
   gap: var(--space-3);
   flex-basis: 100%;
-  flex-wrap: wrap;
   width: 100%;
   min-width: 0;
   padding-top: var(--space-3);
   border-top: 1px solid var(--line-subtle);
+}
+
+.makeup-line > .status {
+  justify-self: start;
+}
+
+.makeup-line > form,
+.makeup-line > form > button {
+  width: 100%;
 }
 
 .makeup-line span {
@@ -2875,14 +2885,15 @@ nav a:hover .nav-icon {
   .actions form button { width: 100%; }
 
   .makeup-line {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
   }
 
-  .makeup-line form {
-    width: 100%;
+  .makeup-line > span:first-child {
+    grid-column: 1 / -1;
   }
 
+  .makeup-line form,
   .makeup-line form button {
     width: 100%;
   }
@@ -3286,9 +3297,22 @@ nav a:hover .nav-icon {
   background: var(--color-warning-50);
 }
 
-.makeup-table .data-row { grid-template-columns: 24px minmax(0, 1.2fr) minmax(0, 1.3fr) 56px auto; }
-.people-table .data-row { grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.8fr) minmax(0, 0.8fr) auto; }
-.allowance-table .data-row { grid-template-columns: minmax(0, 1.4fr) 120px minmax(0, 1.4fr) auto; }
+.makeup-table .data-row { grid-template-columns: 24px minmax(0, 1.2fr) minmax(0, 1.3fr) 56px 232px; }
+.people-table .data-row { grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.8fr) minmax(0, 0.8fr) 232px; }
+.allowance-table .data-row { grid-template-columns: minmax(0, 1.4fr) 120px minmax(0, 1.4fr) 172px; }
+
+/* People actions sit in fixed slots [Edit][Delete] so Edit stays put on rows without Delete (your own row). */
+.people-table .row-actions {
+  display: grid;
+  grid-template-columns: 100px 120px;
+  justify-content: end;
+}
+
+.people-table .row-actions > button,
+.people-table .row-actions > form,
+.people-table .row-actions > form > button {
+  width: 100%;
+}
 
 .data-primary {
   display: grid;
@@ -3415,6 +3439,7 @@ nav a:hover .nav-icon {
   .row-actions > form,
   .row-actions > form > button,
   .row-actions > .action-form-button { flex: 1 1 0; width: auto; min-width: 0; }
+  .people-table .row-actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); justify-content: stretch; }
 }
 
 /* Phones: keep the to-do cards 2x2 and compact so the queue stays near the top. */
