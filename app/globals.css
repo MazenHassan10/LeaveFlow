@@ -401,6 +401,11 @@ button:disabled:hover {
   min-width: 0;
 }
 
+.time-select .select-trigger {
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
 .time-select select {
   width: 100%;
   min-width: 0;
@@ -413,6 +418,7 @@ button:disabled:hover {
   display: flex;
   height: var(--control-height);
   width: 100%;
+  min-width: 0;
   min-height: 0;
   align-items: center;
   justify-content: space-between;
@@ -1548,7 +1554,7 @@ nav a:hover .nav-icon {
 }
 
 .field-grid.shift-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 120px) minmax(0, 120px);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr) minmax(0, 0.8fr) minmax(0, 0.8fr);
 }
 
 /* Wrap the control rows based on the form's own width (sidebar state), not
@@ -1557,13 +1563,14 @@ nav a:hover .nav-icon {
   container: request-form / inline-size;
 }
 
-@container request-form (max-width: 660px) {
+/* 2x2 until every shift name and time fits on one line across four columns. */
+@container request-form (max-width: 790px) {
   .field-grid.shift-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@container request-form (max-width: 380px) {
+@container request-form (max-width: 520px) {
   .field-grid,
   .field-grid.shift-grid {
     grid-template-columns: minmax(0, 1fr);
