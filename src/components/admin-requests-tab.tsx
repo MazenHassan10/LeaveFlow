@@ -76,12 +76,14 @@ export function AdminRequestsTab({ snapshot, filters, viewerId, today, view, onV
                   <header className="request-group-head">
                     {/* A single request is selected from its own row; the group box is for 2+. */}
                     {groupIds.length > 1 ? (
-                      <input
-                        type="checkbox"
-                        checked={allChecked}
-                        aria-label={`Select all of ${name}'s requests`}
-                        onChange={(event) => toggle(groupIds, event.target.checked)}
-                      />
+                      <label className="check-hit">
+                        <input
+                          type="checkbox"
+                          checked={allChecked}
+                          aria-label={`Select all of ${name}'s requests`}
+                          onChange={(event) => toggle(groupIds, event.target.checked)}
+                        />
+                      </label>
                     ) : <span />}
                     <div className="request-group-title">
                       <strong>{name}</strong>
@@ -152,7 +154,9 @@ function PendingRow({ request, isOwn, checked, onCheck }: {
   return (
     <div className="pending-row">
       {isOwn ? <span /> : (
-        <input type="checkbox" checked={checked} aria-label={`Select request for ${request.segments.map((s) => formatWeekdayDateLabel(s.date)).join(", ")}`} onChange={(event) => onCheck(event.target.checked)} />
+        <label className="check-hit">
+          <input type="checkbox" checked={checked} aria-label={`Select request for ${request.segments.map((s) => formatWeekdayDateLabel(s.date)).join(", ")}`} onChange={(event) => onCheck(event.target.checked)} />
+        </label>
       )}
       <div className="pending-row-main">
         <div className="pending-row-when">

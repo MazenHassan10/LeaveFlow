@@ -27,14 +27,16 @@ export function AdminMakeupsTab({ rows }: { rows: { due: MakeupRow[]; upcoming: 
   return (
     <div className="makeups-tab">
       <p className="form-hint">Shifts that have already happened and still need marking. Oldest first.</p>
+      {selectable.length > 1 ? (
+        <label className="checkbox-label makeups-select-all">
+          <input type="checkbox" checked={allChecked} onChange={(event) => toggle(selectable, event.target.checked)} />
+          Select all {selectable.length} shifts
+        </label>
+      ) : null}
       {rows.due.length ? (
         <div className="data-table makeup-table" role="table" aria-label="Make-up shifts to mark">
           <div className="data-row data-head" role="row">
-            <span role="columnheader">
-              {selectable.length ? (
-                <input type="checkbox" checked={allChecked} aria-label="Select all" onChange={(event) => toggle(selectable, event.target.checked)} />
-              ) : null}
-            </span>
+            <span role="columnheader"><span className="sr-only">Select</span></span>
             <span role="columnheader">Employee</span>
             <span role="columnheader">Shift (PT)</span>
             <span role="columnheader">Hours</span>
@@ -44,12 +46,14 @@ export function AdminMakeupsTab({ rows }: { rows: { due: MakeupRow[]; upcoming: 
             <div className="data-row" role="row" key={row.entry.id}>
               <span role="cell">
                 {row.isOwn ? null : (
-                  <input
-                    type="checkbox"
-                    checked={activeSelection.includes(row.entry.id)}
-                    aria-label={`Select ${row.employee?.fullName ?? "employee"}'s ${formatWeekdayDateLabel(row.entry.date)} shift`}
-                    onChange={(event) => toggle([row.entry.id], event.target.checked)}
-                  />
+                  <label className="check-hit">
+                    <input
+                      type="checkbox"
+                      checked={activeSelection.includes(row.entry.id)}
+                      aria-label={`Select ${row.employee?.fullName ?? "employee"}'s ${formatWeekdayDateLabel(row.entry.date)} shift`}
+                      onChange={(event) => toggle([row.entry.id], event.target.checked)}
+                    />
+                  </label>
                 )}
               </span>
               <span role="cell" className="data-primary">

@@ -82,11 +82,11 @@ function PersonRow({ profile, isSelf }: { profile: UserProfile; isSelf: boolean 
   return (
     <div className={`data-row${isNew ? " is-highlighted" : ""}`} role="row">
       <span role="cell" className="data-primary">
-        <strong>
-          {profile.fullName}
+        <span className="person-name">
+          <strong title={profile.fullName}>{profile.fullName}</strong>
           {isSelf ? <span className="you-tag">You</span> : null}
           {isNew ? <span className="you-tag new-tag">New sign-up</span> : null}
-        </strong>
+        </span>
         <small>{profile.email}</small>
       </span>
       <span role="cell"><StatusBadge value={profile.role} /></span>

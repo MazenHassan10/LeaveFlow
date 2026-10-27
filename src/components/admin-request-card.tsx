@@ -37,18 +37,12 @@ export function AdminRequestCard({ request, profiles, viewerId }: { request: Tim
         <StatusBadge value={request.status} />
         {request.status === "Pending" && request.editedAt ? <StatusBadge value="Updated" /> : null}
       </div>
-      <div className="actions">
-        {request.status === "Pending" && !isOwnRequest ? <DecisionControls requestId={request.id} /> : null}
-        {isOwnRequest && (request.status === "Pending" || request.makeupEntries.some((entry) => entry.verificationStatus === "Pending")) ? (
-          <p className="form-hint">This is your own request, so another admin needs to approve it and mark its make-up shifts.</p>
-        ) : null}
-        <DeleteRequestForm requestId={request.id} />
-      </div>
       {request.makeupEntries.map((entry) => (
         <div className="makeup-line" key={entry.id}>
           <span>{formatWeekdayDateLabel(entry.date)} · {formatTimeRange12Hour(entry.startTime, entry.endTime)} · {entry.plannedHours}h</span>
-          <StatusBadge value={entry.verificationStatus} />
-          {isOwnRequest ? null : (
+          {/* Make-up work is only tracked (and markable) once the time off has been approved. */}
+          {request.status === "Approved" ? <StatusBadge value={entry.verificationStatus} /> : null}
+          {request.status === "Approved" && !isOwnRequest ? (
             <>
               <ActionForm action={verifyMakeupAction}>
                 <input type="hidden" name="entryId" value={entry.id} />
@@ -61,9 +55,17 @@ export function AdminRequestCard({ request, profiles, viewerId }: { request: Tim
                 <PendingSubmitButton className="secondary" pendingLabel="Saving...">Not worked</PendingSubmitButton>
               </ActionForm>
             </>
-          )}
+          ) : null}
         </div>
       ))}
+      {/* Destructive action last, separated from the everyday controls. */}
+      <footer className="request-card-footer">
+        {request.status === "Pending" && !isOwnRequest ? <DecisionControls requestId={request.id} /> : null}
+        {isOwnRequest && (request.status === "Pending" || request.makeupEntries.some((entry) => entry.verificationStatus === "Pending")) ? (
+          <p className="form-hint">This is your own request, so another admin needs to approve it and mark its make-up shifts.</p>
+        ) : null}
+        <DeleteRequestForm requestId={request.id} />
+      </footer>
     </article>
   );
 }
