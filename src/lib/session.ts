@@ -42,8 +42,10 @@ export async function requireAdminPage() {
   return { ...result, snapshot: await getAdminSnapshot() };
 }
 
+// Reports expose every employee's balance, email and the audit log: admins and managers only.
 export async function requireReportsPage() {
   const result = await requireActiveProfile();
   if (!result.profile || result.profile.status !== "Active") return result;
+  if (!isAdmin(result.profile)) redirect("/employee");
   return { ...result, snapshot: await getReportsSnapshot() };
 }

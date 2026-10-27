@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
-import { formatCivilDate, losAngelesDate, losAngelesYear, yearInLosAngeles } from "./app-time";
+import { formatCivilDate, losAngelesDate, losAngelesYear } from "./app-time";
 import { buildReportCalendarEvents } from "./report-calendar";
 import { sendNewRequestEmail, sendRequestDecisionEmail } from "./email";
 import {
@@ -317,12 +317,7 @@ export async function ensureProfile(user: AuthUser): Promise<UserProfile> {
   const profile = mapProfile(result.rows[0]);
 
   if (roleTracksPto(profile.role)) {
-    await pool.query(
-      `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
-       values ($1, extract(year from now())::int, $2, 0, make_date(extract(year from now())::int, 12, 31))
-       on conflict (employee_id, calendar_year) do nothing`,
-      [profile.id, PTO_ALLOWANCE_HOURS]
-    );
+    await ensureBalanceRow(pool, profile.id, currentBalanceYear());
   }
   return profile;
 }
@@ -332,7 +327,7 @@ export async function getSnapshot(): Promise<AppSnapshot> {
 
   const [profiles, balances, requests, segments, makeupEntries, auditEvents] = await Promise.all([
     pool.query("select * from user_profiles order by protected_owner desc, full_name asc"),
-    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances"),
+    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances where calendar_year = $1", [currentBalanceYear()]),
     pool.query("select * from time_off_requests order by submitted_at desc"),
     pool.query("select * from time_off_request_segments order by request_date asc, start_time asc"),
     pool.query("select * from makeup_plan_entries order by makeup_date asc, start_time asc"),
@@ -364,7 +359,7 @@ export async function getEmployeeSnapshot(employeeId: string): Promise<AppSnapsh
 
   const [profile, balance, requests, segments, makeupEntries] = await Promise.all([
     pool.query("select * from user_profiles where id = $1", [employeeId]),
-    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances where employee_id = $1", [employeeId]),
+    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances where employee_id = $1 and calendar_year = $2", [employeeId, currentBalanceYear()]),
     pool.query("select * from time_off_requests where employee_id = $1 order by submitted_at desc", [employeeId]),
     pool.query(
       `select s.*
@@ -406,7 +401,7 @@ export async function getAdminSnapshot() {
 
   const [profiles, balances, requests, segments, makeupEntries] = await Promise.all([
     pool.query("select * from user_profiles order by protected_owner desc, full_name asc"),
-    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances"),
+    pool.query("select *, (annual_allowance_hours - used_hours) as remaining_hours from pto_balances where calendar_year = $1", [currentBalanceYear()]),
     pool.query("select * from time_off_requests order by submitted_at desc"),
     pool.query("select * from time_off_request_segments order by request_date asc, start_time asc"),
     pool.query("select * from makeup_plan_entries order by makeup_date asc, start_time asc")
@@ -714,13 +709,7 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
   );
   // Ensure PTO-tracked roles (Employee, Manager) have a balance without waiting for re-login.
   if (roleTracksPto(role)) {
-    const calendarYear = currentBalanceYear();
-    await pool.query(
-      `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
-       values ($1, $2, $3, 0, $4)
-       on conflict (employee_id, calendar_year) do nothing`,
-      [id, calendarYear, PTO_ALLOWANCE_HOURS, yearEnd(calendarYear)]
-    );
+    await ensureBalanceRow(pool, id, currentBalanceYear());
   }
   await audit(actor.email, "admin.profile_updated", "user_profile", id);
 }
@@ -790,6 +779,81 @@ function yearEnd(year: number) {
   return `${year}-12-31`;
 }
 
+type Queryable = { query: Pool["query"] };
+
+// Creates the employee's balance row for a year if missing, carrying forward their most
+// recent earlier allowance (so custom allowances survive the new year) or the default.
+async function ensureBalanceRow(db: Queryable, employeeId: string, year: number) {
+  await db.query(
+    `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
+     select $1, $2::int,
+       coalesce((select annual_allowance_hours from pto_balances
+                 where employee_id = $1 and calendar_year < $2::int
+                 order by calendar_year desc limit 1), $3),
+       0, make_date($2::int, 12, 31)
+     on conflict (employee_id, calendar_year) do nothing`,
+    [employeeId, year, PTO_ALLOWANCE_HOURS]
+  );
+}
+
+// PTO counts against the year the time off is taken, not the year it was approved.
+async function recalculatePtoUsed(db: Queryable, employeeId: string, year: number) {
+  await db.query(
+    `update pto_balances
+     set used_hours = coalesce((
+       select sum(s.requested_hours)
+       from time_off_request_segments s
+       join time_off_requests r on r.id = s.request_id
+       where r.employee_id = $1 and r.request_type = 'PTO' and r.status = 'Approved'
+         and extract(year from s.request_date)::int = $2::int
+     ), 0)
+     where employee_id = $1 and calendar_year = $2::int`,
+    [employeeId, year]
+  );
+}
+
+async function ptoHoursByYear(db: Queryable, requestId: string) {
+  const result = await db.query(
+    `select extract(year from request_date)::int as year, sum(requested_hours)::float as hours
+     from time_off_request_segments where request_id = $1 group by 1`,
+    [requestId]
+  );
+  return result.rows as Array<{ year: number; hours: number }>;
+}
+
+async function remainingPto(db: Queryable, employeeId: string, year: number) {
+  await ensureBalanceRow(db, employeeId, year);
+  const result = await db.query(
+    "select annual_allowance_hours::float as allowance, used_hours::float as used from pto_balances where employee_id = $1 and calendar_year = $2",
+    [employeeId, year]
+  );
+  const row = result.rows[0] || { allowance: PTO_ALLOWANCE_HOURS, used: 0 };
+  return Number((row.allowance - row.used).toFixed(2));
+}
+
+function insufficientPtoMessage(needed: number, remaining: number, year: number) {
+  return `This needs ${needed}h of PTO but only ${Math.max(remaining, 0)}h is left for ${year}.`;
+}
+
+// Makes sure every active PTO-tracked person has a balance row for the current year.
+// Idempotent; run by the daily cron so January balances exist before anyone signs in.
+export async function ensureCurrentYearBalances() {
+  if (!pool) return;
+  const year = currentBalanceYear();
+  await pool.query(
+    `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
+     select p.id, $1::int,
+       coalesce((select b.annual_allowance_hours from pto_balances b
+                 where b.employee_id = p.id and b.calendar_year < $1::int
+                 order by b.calendar_year desc limit 1), $2),
+       0, make_date($1::int, 12, 31)
+     from user_profiles p
+     where p.role in ('Employee', 'Manager') and p.status = 'Active'
+     on conflict (employee_id, calendar_year) do nothing`,
+    [year, PTO_ALLOWANCE_HOURS]
+  );
+}
+
 export async function updatePtoAllowance(actor: UserProfile, employeeId: string, annualAllowanceHours: string | number) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
 
@@ -850,9 +914,15 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
   if (requestType !== "PTO" && !makeupHours) throw new Error("Additional time off requires a make-up plan.");
   const payload: RequestPayload = { requestType, reason, segmentDate, segmentStart, segmentEnd, requestedHours, makeupEntries };
 
+  const segmentYear = Number(segmentDate.slice(0, 4));
+
   if (!pool) {
     const duplicate = memory.requests.some((request) => request.employeeId === actor.id && memoryRequestMatchesPayload(request, payload));
     if (duplicate) return { status: "duplicate" };
+    if (requestType === "PTO") {
+      const remaining = memoryRemainingPto(actor.id, segmentYear);
+      if (requestedHours > remaining) throw new Error(insufficientPtoMessage(requestedHours, remaining, segmentYear));
+    }
 
     const requestId = uuid();
     memory.requests.unshift({
@@ -881,6 +951,10 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
     if (await hasDuplicateRequest(client, actor, payload)) {
       await client.query("commit");
       return { status: "duplicate" };
+    }
+    if (requestType === "PTO") {
+      const remaining = await remainingPto(client, actor.id, segmentYear);
+      if (requestedHours > remaining) throw new Error(insufficientPtoMessage(requestedHours, remaining, segmentYear));
     }
 
     const request = await client.query(
@@ -921,21 +995,25 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
     const request = memory.requests.find((item) => item.id === requestId);
     if (!request) return;
     if (request.employeeId === actor.id) throw new Error("You cannot approve your own request.");
+    const isPtoApproval = status === "Approved" && request.requestType === "PTO";
+    const hoursByYear = isPtoApproval ? memoryPtoHoursByYear(request) : new Map<number, number>();
+    for (const [year, hours] of hoursByYear) {
+      const remaining = memoryRemainingPto(request.employeeId, year);
+      if (hours > remaining) throw new Error(insufficientPtoMessage(hours, remaining, year));
+    }
     request.status = status;
     request.approverEmail = actor.email;
     request.approvedAt = new Date().toISOString();
-    if (status === "Approved" && request.requestType === "PTO") {
-      const balance = memory.balances[request.employeeId] || {
+    for (const year of hoursByYear.keys()) {
+      memory.balances[request.employeeId] ||= {
         employeeId: request.employeeId,
-        calendarYear: losAngelesYear(),
+        calendarYear: year,
         annualAllowanceHours: PTO_ALLOWANCE_HOURS,
         usedHours: 0,
         remainingHours: PTO_ALLOWANCE_HOURS,
-        expiresOn: `${losAngelesYear()}-12-31`
+        expiresOn: yearEnd(year)
       };
-      balance.usedHours += request.totalRequestedHours;
-      balance.remainingHours = balance.annualAllowanceHours - balance.usedHours;
-      memory.balances[request.employeeId] = balance;
+      recalculateMemoryPtoBalance(request.employeeId, year);
     }
     await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
     await notifyEmployeeOfRequestDecision(requestId);
@@ -953,15 +1031,22 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
       await client.query("rollback");
       throw new Error("You cannot approve your own request.");
     }
+    const employeeId = request.rows[0].employee_id;
+    const isPtoApproval = status === "Approved" && request.rows[0].request_type === "PTO";
+    const hoursByYear = isPtoApproval ? await ptoHoursByYear(client, requestId) : [];
+    for (const { year, hours } of hoursByYear) {
+      const remaining = await remainingPto(client, employeeId, year);
+      if (hours > remaining) {
+        await client.query("rollback");
+        throw new Error(insufficientPtoMessage(hours, remaining, year));
+      }
+    }
     await client.query(
       "update time_off_requests set status = $1, approver_email = $2, approved_at = now() where id = $3",
       [status, actor.email, requestId]
     );
-    if (status === "Approved" && request.rows[0].request_type === "PTO") {
-      await client.query(
-        "update pto_balances set used_hours = used_hours + $1 where employee_id = $2 and calendar_year = extract(year from now())::int",
-        [request.rows[0].total_requested_hours, request.rows[0].employee_id]
-      );
+    for (const { year } of hoursByYear) {
+      await recalculatePtoUsed(client, employeeId, year);
     }
     await client.query("commit");
     await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
@@ -974,24 +1059,33 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
   }
 }
 
-function yearFromDate(value: string | Date | null | undefined) {
-  return yearInLosAngeles(value);
+function memoryPtoHoursByYear(request: TimeOffRequest) {
+  const hoursByYear = new Map<number, number>();
+  for (const segment of request.segments) {
+    const year = Number(segment.date.slice(0, 4));
+    hoursByYear.set(year, (hoursByYear.get(year) || 0) + segment.requestedHours);
+  }
+  return hoursByYear;
+}
+
+function memoryApprovedPtoUsed(employeeId: string, year: number) {
+  return Number(memory.requests
+    .filter((request) => request.employeeId === employeeId && request.requestType === "PTO" && request.status === "Approved")
+    .reduce((total, request) => total + (memoryPtoHoursByYear(request).get(year) || 0), 0)
+    .toFixed(2));
+}
+
+function memoryRemainingPto(employeeId: string, year: number) {
+  const allowance = memory.balances[employeeId]?.annualAllowanceHours ?? PTO_ALLOWANCE_HOURS;
+  return Number((allowance - memoryApprovedPtoUsed(employeeId, year)).toFixed(2));
 }
 
 function recalculateMemoryPtoBalance(employeeId: string, calendarYear: number) {
   const balance = memory.balances[employeeId];
-  if (!balance) return;
+  // The in-memory store keeps one balance per employee; only touch the matching year.
+  if (!balance || balance.calendarYear !== calendarYear) return;
 
-  const usedHours = Number(memory.requests
-    .filter((request) => {
-      return request.employeeId === employeeId
-        && request.requestType === "PTO"
-        && request.status === "Approved"
-        && yearFromDate(request.approvedAt) === calendarYear;
-    })
-    .reduce((total, request) => total + request.totalRequestedHours, 0)
-    .toFixed(2));
-
+  const usedHours = memoryApprovedPtoUsed(employeeId, calendarYear);
   balance.usedHours = usedHours;
   balance.remainingHours = Number((balance.annualAllowanceHours - usedHours).toFixed(2));
 }
@@ -1005,7 +1099,7 @@ export async function deleteRequest(actor: UserProfile, requestId: string) {
 
     const [request] = memory.requests.splice(requestIndex, 1);
     if (request.requestType === "PTO" && request.status === "Approved") {
-      recalculateMemoryPtoBalance(request.employeeId, yearFromDate(request.approvedAt));
+      for (const year of memoryPtoHoursByYear(request).keys()) recalculateMemoryPtoBalance(request.employeeId, year);
     }
 
     await audit(actor.email, "admin.request_deleted", "time_off_request", requestId);
@@ -1022,24 +1116,14 @@ export async function deleteRequest(actor: UserProfile, requestId: string) {
       return;
     }
 
+    const affectedYears = deletedRequest.request_type === "PTO" && deletedRequest.status === "Approved"
+      ? (await ptoHoursByYear(client, requestId)).map(({ year }) => year)
+      : [];
+
     await client.query("delete from time_off_requests where id = $1", [requestId]);
 
-    if (deletedRequest.request_type === "PTO" && deletedRequest.status === "Approved") {
-      const calendarYear = yearFromDate(deletedRequest.approved_at);
-      await client.query(
-        `update pto_balances
-         set used_hours = coalesce((
-           select sum(total_requested_hours)
-           from time_off_requests
-           where employee_id = $1
-             and request_type = 'PTO'
-             and status = 'Approved'
-             and extract(year from approved_at)::int = $2
-         ), 0)
-         where employee_id = $1
-           and calendar_year = $2`,
-        [deletedRequest.employee_id, calendarYear]
-      );
+    for (const year of affectedYears) {
+      await recalculatePtoUsed(client, deletedRequest.employee_id, year);
     }
 
     await client.query("commit");

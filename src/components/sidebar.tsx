@@ -31,8 +31,10 @@ export function Sidebar({
 
   const links = [
     { href: "/employee", label: "My time off", icon: <IconBriefcase /> },
-    ...(canAccessAdmin ? [{ href: "/admin", label: "Admin", icon: <IconShield /> }] : []),
-    { href: "/reports", label: "Reports", icon: <IconChartBar /> },
+    ...(canAccessAdmin ? [
+      { href: "/admin", label: "Admin", icon: <IconShield /> },
+      { href: "/reports", label: "Reports", icon: <IconChartBar /> },
+    ] : []),
   ];
 
   return (
