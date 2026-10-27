@@ -28,7 +28,7 @@ const DEFAULT_OPEN: Record<ApprovalGroupKey, boolean> = {
   cancelled: false,
 };
 
-export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
+export function ApprovalSections({ snapshot, viewerId }: { snapshot: AppSnapshot; viewerId?: string }) {
   const [filters, setFilters] = useState<ApprovalFilters>(DEFAULT_APPROVAL_FILTERS);
   const recentFrom = addCivilDays(losAngelesDate(), -RECENT_WINDOW_DAYS);
   const groups = filterApprovalGroups(buildApprovalGroups(snapshot.requests), filters, snapshot.profiles, recentFrom);
@@ -232,7 +232,7 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
                 {shouldRenderGroup && group.requests.length ? (
                   <div className="stack">
                     {group.requests.map((request) => (
-                      <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} />
+                      <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} viewerId={viewerId} />
                     ))}
                   </div>
                 ) : shouldRenderGroup ? (

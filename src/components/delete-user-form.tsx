@@ -1,6 +1,7 @@
 "use client";
 
 import { deleteUserProfileAction } from "@/app/actions";
+import { ActionForm } from "./action-form";
 import { IconTrash } from "./icons";
 import { PendingSubmitButton } from "./pending-submit-button";
 
@@ -14,20 +15,15 @@ export function DeleteUserForm({
   email: string;
 }) {
   return (
-    <form
+    <ActionForm
       action={deleteUserProfileAction}
-      onSubmit={(event) => {
-        const confirmed = window.confirm(
-          `Permanently delete ${fullName} (${email})? This removes their account, PTO balance, and all requests. This cannot be undone.`
-        );
-        if (!confirmed) event.preventDefault();
-      }}
+      confirmMessage={`Permanently delete ${fullName} (${email})? This removes their account, PTO balance, and all requests. This cannot be undone.`}
     >
       <input type="hidden" name="profileId" value={profileId} />
       <PendingSubmitButton className="btn-danger" pendingLabel="Deleting...">
         <IconTrash />
         Delete
       </PendingSubmitButton>
-    </form>
+    </ActionForm>
   );
 }

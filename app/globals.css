@@ -1712,6 +1712,14 @@ nav a:hover .nav-icon {
 
 .actions form {
   display: inline-flex;
+  flex-wrap: wrap;
+}
+
+/* Inline error from a form action: spans the full row of whatever layout it sits in. */
+.action-error {
+  flex-basis: 100%;
+  grid-column: 1 / -1;
+  margin: var(--space-2) 0 0;
 }
 
 .makeup-line {

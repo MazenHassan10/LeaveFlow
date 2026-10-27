@@ -9,6 +9,7 @@ import {
   formatTimestampInLosAngeles,
   formatWeekdayDateLabel
 } from "@/src/lib/app-time";
+import { ActionForm } from "./action-form";
 import { PendingSubmitButton } from "./pending-submit-button";
 import { StatusBadge } from "./status-badge";
 
@@ -103,17 +104,13 @@ export function RequestCard({ request }: { request: TimeOffRequest }) {
           <Link className="btn-ghost compact" href={`/employee?edit=${request.id}#request-form`} scroll>
             Edit
           </Link>
-          <form
+          <ActionForm
             action={cancelRequestAction}
-            onSubmit={(event) => {
-              if (!window.confirm("Cancel this request? Admins will be notified. You can submit a new one any time.")) {
-                event.preventDefault();
-              }
-            }}
+            confirmMessage="Cancel this request? Admins will be notified. You can submit a new one any time."
           >
             <input type="hidden" name="requestId" value={request.id} />
             <PendingSubmitButton className="secondary compact" pendingLabel="Cancelling...">Cancel request</PendingSubmitButton>
-          </form>
+          </ActionForm>
         </div>
       ) : null}
     </article>

@@ -76,69 +76,83 @@ export async function updateTimeOffRequest(_previousState: SubmitRequestState, f
   }
 }
 
-export async function cancelRequestAction(formData: FormData) {
-  const profile = await currentProfile();
-  await cancelRequest(profile, String(formData.get("requestId")));
-  revalidateDashboardRoutes();
-}
+// Every form action returns { status, message } instead of throwing. In production Next.js
+// replaces the whole page with a generic error screen when a server action throws, and
+// hides the message, so refusals (own make-up, invalid name, not enough PTO...) must be returned.
+export type ActionState = { status: "idle" | "done" | "error"; message: string };
+export type DecisionState = ActionState;
 
-export async function updateUserProfileAction(formData: FormData) {
-  const actor = await currentProfile();
-  await updateProfile(
-    actor,
-    String(formData.get("profileId")),
-    String(formData.get("role")) as AppRole,
-    String(formData.get("status")) as ProfileStatus,
-    formData.has("fullName") ? String(formData.get("fullName")) : undefined
-  );
-  revalidateDashboardRoutes();
-}
-
-export async function deleteUserProfileAction(formData: FormData) {
-  const actor = await currentProfile();
-  await deleteProfile(actor, String(formData.get("profileId")));
-  revalidateDashboardRoutes();
-}
-
-export async function updatePtoAllowanceAction(formData: FormData) {
-  const actor = await currentProfile();
-  await updatePtoAllowance(
-    actor,
-    String(formData.get("employeeId")),
-    String(formData.get("annualAllowanceHours"))
-  );
-  revalidateDashboardRoutes();
-}
-
-export type DecisionState = { status: "idle" | "done" | "error"; message: string };
-
-// Returns errors instead of throwing: production hides thrown server-action messages,
-// and admins need to see refusals such as an insufficient PTO balance.
-export async function setRequestStatusAction(_previousState: DecisionState, formData: FormData): Promise<DecisionState> {
+async function runAction(work: () => Promise<string>, fallback: string): Promise<ActionState> {
   try {
-    const actor = await currentProfile();
-    const status = String(formData.get("status")) as "Approved" | "Rejected";
+    const message = await work();
+    revalidateDashboardRoutes();
+    return { status: "done", message };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : fallback };
+  }
+}
+
+export async function cancelRequestAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await cancelRequest(await currentProfile(), String(formData.get("requestId")));
+    return "Request cancelled.";
+  }, "The request could not be cancelled.");
+}
+
+export async function updateUserProfileAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await updateProfile(
+      await currentProfile(),
+      String(formData.get("profileId")),
+      String(formData.get("role")) as AppRole,
+      String(formData.get("status")) as ProfileStatus,
+      formData.has("fullName") ? String(formData.get("fullName")) : undefined
+    );
+    return "Saved.";
+  }, "The user could not be saved.");
+}
+
+export async function deleteUserProfileAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await deleteProfile(await currentProfile(), String(formData.get("profileId")));
+    return "User deleted.";
+  }, "The user could not be deleted.");
+}
+
+export async function updatePtoAllowanceAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await updatePtoAllowance(
+      await currentProfile(),
+      String(formData.get("employeeId")),
+      String(formData.get("annualAllowanceHours"))
+    );
+    return "Allowance saved.";
+  }, "The allowance could not be saved.");
+}
+
+export async function setRequestStatusAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  const status = String(formData.get("status")) as "Approved" | "Rejected";
+  return runAction(async () => {
     await setRequestStatus(
-      actor,
+      await currentProfile(),
       String(formData.get("requestId")),
       status,
       formData.has("note") ? String(formData.get("note")) : null
     );
-    revalidateDashboardRoutes();
-    return { status: "done", message: status === "Approved" ? "Approved." : "Rejected." };
-  } catch (error) {
-    return { status: "error", message: error instanceof Error ? error.message : "The request could not be updated." };
-  }
+    return status === "Approved" ? "Approved." : "Rejected.";
+  }, "The request could not be updated.");
 }
 
-export async function deleteRequestAction(formData: FormData) {
-  const actor = await currentProfile();
-  await deleteRequest(actor, String(formData.get("requestId")));
-  revalidateDashboardRoutes();
+export async function deleteRequestAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await deleteRequest(await currentProfile(), String(formData.get("requestId")));
+    return "Request deleted.";
+  }, "The request could not be deleted.");
 }
 
-export async function verifyMakeupAction(formData: FormData) {
-  const actor = await currentProfile();
-  await verifyMakeup(actor, String(formData.get("entryId")), String(formData.get("status")) as MakeupStatus);
-  revalidateDashboardRoutes();
+export async function verifyMakeupAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await verifyMakeup(await currentProfile(), String(formData.get("entryId")), String(formData.get("status")) as MakeupStatus);
+    return "Saved.";
+  }, "The make-up shift could not be updated.");
 }

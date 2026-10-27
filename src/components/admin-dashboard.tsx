@@ -7,7 +7,7 @@ import { PtoAllowanceForm } from "./pto-allowance-form";
 import { CardList } from "./card-list";
 import { ApprovalSections } from "./approval-sections";
 
-export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
+export function AdminDashboard({ snapshot, viewerId }: { snapshot: AppSnapshot; viewerId?: string }) {
   const requests = snapshot.requests;
   const editableProfiles = snapshot.profiles.filter((profile) => !profile.protectedOwner);
 
@@ -27,13 +27,13 @@ export function AdminDashboard({ snapshot }: { snapshot: AppSnapshot }) {
       <div className="grid two">
         <section className="panel">
           <h2>Time-off approvals</h2>
-          <ApprovalSections snapshot={snapshot} />
+          <ApprovalSections snapshot={snapshot} viewerId={viewerId} />
         </section>
         <section className="panel">
           <h2>User roles</h2>
           <CardList empty="No editable users yet.">
             {editableProfiles.map((profile) => (
-              <UserRoleForm key={profile.id} profile={profile} />
+              <UserRoleForm key={profile.id} profile={profile} isSelf={profile.id === viewerId} />
             ))}
           </CardList>
         </section>

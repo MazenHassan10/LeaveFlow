@@ -137,3 +137,10 @@ assert.match(csv, /"'=HYPERLINK\(""http:\/\/bad""\)"/, "formula neutralized and 
 assert.match(toCsv(detail), /"Dentist, ""quick"""/, "commas and quotes escaped");
 
 console.log("Admin improvement tests passed.");
+
+// ---------- Verifying a make-up shift that doesn't exist fails cleanly ----------
+{
+  const { verifyMakeup } = await import("../src/lib/app-data");
+  await assert.rejects(() => verifyMakeup(admin, "no-such-entry", "Worked"), /no longer exists/);
+  console.log("Missing make-up verification test passed.");
+}

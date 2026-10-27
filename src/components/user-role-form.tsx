@@ -1,21 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/src/lib/app-data";
 import { updateUserProfileAction } from "@/app/actions";
+import { ActionForm } from "./action-form";
 import { DeleteUserForm } from "./delete-user-form";
 import { PendingSubmitButton } from "./pending-submit-button";
 
-export function UserRoleForm({ profile }: { profile: UserProfile }) {
-  const router = useRouter();
+// isSelf: the signed-in admin's own row. Deleting yourself is always refused, so no Delete button.
+export function UserRoleForm({ profile, isSelf = false }: { profile: UserProfile; isSelf?: boolean }) {
   const formId = `user-form-${profile.id}`;
-
-  async function saveProfile(formData: FormData) {
-    await updateUserProfileAction(formData);
-    // Re-fetch the server components so the row (and derived lists) reflect
-    // the new name/role/status without a manual page refresh.
-    router.refresh();
-  }
 
   return (
     <div className="user-row">
@@ -36,7 +29,7 @@ export function UserRoleForm({ profile }: { profile: UserProfile }) {
         <span title={profile.email}>{profile.email}</span>
       </div>
       <div className="user-row-actions">
-        <form id={formId} action={saveProfile} className="user-row-controls">
+        <ActionForm id={formId} action={updateUserProfileAction} className="user-row-controls">
           <input type="hidden" name="profileId" value={profile.id} />
           <label>
             Role
@@ -56,8 +49,8 @@ export function UserRoleForm({ profile }: { profile: UserProfile }) {
             </select>
           </label>
           <PendingSubmitButton pendingLabel="Saving...">Save</PendingSubmitButton>
-        </form>
-        <DeleteUserForm profileId={profile.id} fullName={profile.fullName} email={profile.email} />
+        </ActionForm>
+        {isSelf ? null : <DeleteUserForm profileId={profile.id} fullName={profile.fullName} email={profile.email} />}
       </div>
     </div>
   );

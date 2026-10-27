@@ -12,7 +12,7 @@ export default async function AdminPage() {
 
   return (
     <Shell profile={profile}>
-      <AdminDashboard snapshot={snapshot} />
+      <AdminDashboard snapshot={snapshot} viewerId={profile.id} />
     </Shell>
   );
 }

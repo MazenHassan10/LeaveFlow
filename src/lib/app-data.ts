@@ -1314,6 +1314,9 @@ export async function deleteRequest(actor: UserProfile, requestId: string) {
 export async function verifyMakeup(actor: UserProfile, entryId: string, status: MakeupStatus) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
   if (!pool) {
+    if (!memory.requests.some((request) => request.makeupEntries.some((item) => item.id === entryId))) {
+      throw new Error("That make-up shift no longer exists.");
+    }
     for (const request of memory.requests) {
       const entry = request.makeupEntries.find((item) => item.id === entryId);
       if (entry) {
@@ -1333,7 +1336,8 @@ export async function verifyMakeup(actor: UserProfile, entryId: string, status: 
      where e.id = $1`,
     [entryId]
   );
-  if (owner.rows[0]?.employee_id === actor.id) {
+  if (!owner.rows[0]) throw new Error("That make-up shift no longer exists.");
+  if (owner.rows[0].employee_id === actor.id) {
     throw new Error("You cannot verify your own make-up hours.");
   }
   await pool.query(
