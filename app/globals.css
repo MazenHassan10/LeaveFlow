@@ -3370,6 +3370,17 @@ nav a:hover .nav-icon {
   width: 100%;
 }
 
+/* Edit mode: the name cell also holds the email below its input, so align every control
+   to the top (one line of inputs) and centre the buttons on that same line. */
+.data-row.person-edit {
+  align-items: start;
+}
+
+.person-edit .row-actions {
+  min-height: var(--control-height);
+  align-items: center;
+}
+
 .allowance-input {
   max-width: 110px;
 }
