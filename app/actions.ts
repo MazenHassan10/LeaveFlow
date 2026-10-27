@@ -9,6 +9,7 @@ import {
   deleteProfile,
   deleteRequest,
   ensureProfile,
+  normalizeDecisionNote,
   setRequestStatus,
   updatePendingRequest,
   updatePtoAllowance,
@@ -79,7 +80,8 @@ export async function updateTimeOffRequest(_previousState: SubmitRequestState, f
 // Every form action returns { status, message } instead of throwing. In production Next.js
 // replaces the whole page with a generic error screen when a server action throws, and
 // hides the message, so refusals (own make-up, invalid name, not enough PTO...) must be returned.
-export type ActionState = { status: "idle" | "done" | "error"; message: string };
+// changed: something was saved even though status is "error" (a bulk action that partly succeeded).
+export type ActionState = { status: "idle" | "done" | "error"; message: string; changed?: boolean };
 export type DecisionState = ActionState;
 
 async function runAction(work: () => Promise<string>, fallback: string): Promise<ActionState> {
@@ -155,4 +157,58 @@ export async function verifyMakeupAction(_previousState: ActionState, formData: 
     await verifyMakeup(await currentProfile(), String(formData.get("entryId")), String(formData.get("status")) as MakeupStatus);
     return "Saved.";
   }, "The make-up shift could not be updated.");
+}
+
+type BulkOutcome = { succeeded: number; failures: string[] };
+
+async function runBulk(ids: string[], work: (id: string) => Promise<void>): Promise<BulkOutcome> {
+  const outcome: BulkOutcome = { succeeded: 0, failures: [] };
+  for (const id of ids) {
+    try {
+      await work(id);
+      outcome.succeeded += 1;
+    } catch (error) {
+      outcome.failures.push(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+  return outcome;
+}
+
+function bulkResult(verb: string, total: number, outcome: BulkOutcome): ActionState {
+  if (outcome.succeeded) revalidateDashboardRoutes();
+  if (!outcome.failures.length) return { status: "done", message: `${verb} ${total}.` };
+  const reasons = [...new Set(outcome.failures)].join(" ");
+  return {
+    status: "error",
+    changed: outcome.succeeded > 0,
+    message: `${verb} ${outcome.succeeded} of ${total}. ${outcome.failures.length} couldn't be processed: ${reasons}`,
+  };
+}
+
+// Approve or reject several requests at once; one shared note (required to reject).
+export async function bulkDecideAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const ids = formData.getAll("requestId").map(String).filter(Boolean);
+    if (!ids.length) return { status: "error", message: "Select at least one request." };
+    const status = String(formData.get("status")) as "Approved" | "Rejected";
+    const note = normalizeDecisionNote(status, formData.has("note") ? String(formData.get("note")) : null);
+    const actor = await currentProfile();
+    const outcome = await runBulk(ids, (id) => setRequestStatus(actor, id, status, note));
+    return bulkResult(status === "Approved" ? "Approved" : "Rejected", ids.length, outcome);
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "The requests could not be updated." };
+  }
+}
+
+export async function bulkVerifyMakeupAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const ids = formData.getAll("entryId").map(String).filter(Boolean);
+    if (!ids.length) return { status: "error", message: "Select at least one make-up shift." };
+    const status = String(formData.get("status")) as MakeupStatus;
+    const actor = await currentProfile();
+    const outcome = await runBulk(ids, (id) => verifyMakeup(actor, id, status));
+    return bulkResult(status === "Worked" ? "Marked worked:" : "Marked not worked:", ids.length, outcome);
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "The make-up shifts could not be updated." };
+  }
 }

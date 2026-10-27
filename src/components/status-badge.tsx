@@ -4,7 +4,7 @@ import { Badge } from "./ui/badge";
 function variantFor(value: string): BadgeProps["variant"] {
   const key = value.toLowerCase();
   if (["approved", "worked", "active", "admin", "owner"].includes(key)) return "success";
-  if (["pending", "not worked"].includes(key)) return "warning";
+  if (["pending", "not worked", "late notice"].includes(key)) return "warning";
   if (["rejected", "disabled"].includes(key)) return "destructive";
   if (key === "employee" || key === "cancelled") return "default";
   if (key === "manager") return "violet";
