@@ -4,11 +4,13 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/src/lib/auth";
 import {
+  cancelRequest,
   createTimeOffRequest,
   deleteProfile,
   deleteRequest,
   ensureProfile,
   setRequestStatus,
+  updatePendingRequest,
   updatePtoAllowance,
   updateProfile,
   verifyMakeup
@@ -16,7 +18,7 @@ import {
 import type { AppRole, MakeupStatus, ProfileStatus } from "@/src/lib/pto";
 
 export type SubmitRequestState = {
-  status: "idle" | "created" | "duplicate" | "error";
+  status: "idle" | "created" | "updated" | "duplicate" | "error";
   message: string;
 };
 
@@ -53,6 +55,31 @@ export async function submitTimeOffRequest(_previousState: SubmitRequestState, f
       message: error instanceof Error ? error.message : "Request could not be submitted."
     };
   }
+}
+
+export async function updateTimeOffRequest(_previousState: SubmitRequestState, formData: FormData): Promise<SubmitRequestState> {
+  try {
+    const profile = await currentProfile();
+    const result = await updatePendingRequest(profile, String(formData.get("requestId")), formData);
+    revalidateDashboardRoutes();
+
+    if (result.status === "duplicate") {
+      return { status: "duplicate", message: "You already have an identical request, so nothing was changed." };
+    }
+
+    return { status: "updated", message: "Request updated. Admins have been notified." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Request could not be updated."
+    };
+  }
+}
+
+export async function cancelRequestAction(formData: FormData) {
+  const profile = await currentProfile();
+  await cancelRequest(profile, String(formData.get("requestId")));
+  revalidateDashboardRoutes();
 }
 
 export async function updateUserProfileAction(formData: FormData) {

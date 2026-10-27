@@ -268,12 +268,50 @@ function makeupSummary(request: TimeOffRequest) {
     .join("\n");
 }
 
-export function buildNewRequestEmail(admins: UserProfile[], employee: UserProfile, request: TimeOffRequest): EmailMessage | null {
+export type RequestEmailKind = "new" | "updated" | "cancelled";
+
+const REQUEST_EMAIL_COPY: Record<RequestEmailKind, {
+  title: string;
+  subject: (name: string) => string;
+  lead: (name: string, email: string) => string;
+  intro: (name: string, type: string) => string;
+  cta: string;
+}> = {
+  new: {
+    title: "New request submitted",
+    subject: (name) => `New LeaveFlow request from ${name}`,
+    lead: (name, email) => `A new LeaveFlow request was submitted by ${name} (${email}).`,
+    intro: (name, type) => `${name} submitted a ${type} request for review.`,
+    cta: "Review in admin dashboard",
+  },
+  updated: {
+    title: "Request updated",
+    subject: (name) => `Updated LeaveFlow request from ${name}`,
+    lead: (name, email) => `${name} (${email}) updated a pending LeaveFlow request. Please review the new details.`,
+    intro: (name, type) => `${name} changed their pending ${type} request. These are the new details.`,
+    cta: "Review in admin dashboard",
+  },
+  cancelled: {
+    title: "Request cancelled",
+    subject: (name) => `${name} cancelled a LeaveFlow request`,
+    lead: (name, email) => `${name} (${email}) cancelled a pending LeaveFlow request. No action is needed.`,
+    intro: (name, type) => `${name} cancelled this pending ${type} request. No action is needed.`,
+    cta: "Open admin dashboard",
+  },
+};
+
+export function buildNewRequestEmail(
+  admins: UserProfile[],
+  employee: UserProfile,
+  request: TimeOffRequest,
+  kind: RequestEmailKind = "new"
+): EmailMessage | null {
   const to = admins.map((admin) => admin.email).filter(Boolean);
   if (!to.length) return null;
+  const copy = REQUEST_EMAIL_COPY[kind];
   const reviewUrl = appUrl("/admin");
   const text = [
-    `A new LeaveFlow request was submitted by ${employee.fullName} (${employee.email}).`,
+    copy.lead(employee.fullName, employee.email),
     "",
     `Request type: ${request.requestType}`,
     `Requested time:`,
@@ -287,9 +325,9 @@ export function buildNewRequestEmail(admins: UserProfile[], employee: UserProfil
     `Review it here: ${reviewUrl}`
   ].join("\n");
   const html = renderEmailLayout({
-    eyebrow: "Admin review",
-    title: "New request submitted",
-    intro: `${employee.fullName} submitted a ${request.requestType} request for review.`,
+    eyebrow: kind === "cancelled" ? "For your records" : "Admin review",
+    title: copy.title,
+    intro: copy.intro(employee.fullName, request.requestType),
     badge: request.requestType,
     body: [
       renderMetricCards([
@@ -311,13 +349,13 @@ export function buildNewRequestEmail(admins: UserProfile[], employee: UserProfil
       renderSection("Requested time", requestedTimeTable(request)),
       renderSection("Make-up plan", makeupPlanTable(request)),
       renderSection("Reason", renderReason(request.reason)),
-      renderCta("Review in admin dashboard", reviewUrl),
+      renderCta(copy.cta, reviewUrl),
     ].join(""),
   });
 
   return {
     to,
-    subject: `New LeaveFlow request from ${employee.fullName}`,
+    subject: copy.subject(employee.fullName),
     text,
     html
   };
@@ -556,8 +594,13 @@ export async function sendEmail(message: EmailMessage): Promise<EmailSendResult>
   return { sent: true, skipped: false };
 }
 
-export async function sendNewRequestEmail(admins: UserProfile[], employee: UserProfile, request: TimeOffRequest) {
-  const message = buildNewRequestEmail(admins, employee, request);
+export async function sendNewRequestEmail(
+  admins: UserProfile[],
+  employee: UserProfile,
+  request: TimeOffRequest,
+  kind: RequestEmailKind = "new"
+) {
+  const message = buildNewRequestEmail(admins, employee, request, kind);
   if (!message) return { sent: false, skipped: true, reason: "no-admin-recipients" };
   return sendEmail(message);
 }

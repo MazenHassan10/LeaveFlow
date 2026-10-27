@@ -14,13 +14,14 @@ const DEFAULT_OPEN: Record<ApprovalGroupKey, boolean> = {
   pending: false,
   approved: false,
   rejected: false,
+  cancelled: false,
 };
 
 export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
   const groups = buildApprovalGroups(snapshot.requests);
   const [openGroups, setOpenGroups] = useState(DEFAULT_OPEN);
   const [renderedGroups, setRenderedGroups] = useState(DEFAULT_OPEN);
-  const sectionRefs = useRef<GroupRefs>({ pending: null, approved: null, rejected: null });
+  const sectionRefs = useRef<GroupRefs>({ pending: null, approved: null, rejected: null, cancelled: null });
   const initialized = useRef(false);
 
   function setSectionRef(key: ApprovalGroupKey) {
@@ -159,7 +160,7 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
                 <span className="approval-group-chevron" aria-hidden="true"><IconChevronLeft /></span>
                 <span>{group.title}</span>
               </span>
-              <Badge className="approval-group-count" variant={group.key === "approved" ? "success" : group.key === "rejected" ? "destructive" : "warning"}>
+              <Badge className="approval-group-count" variant={group.key === "approved" ? "success" : group.key === "rejected" ? "destructive" : group.key === "cancelled" ? "default" : "warning"}>
                 {group.requests.length}
               </Badge>
             </Button>

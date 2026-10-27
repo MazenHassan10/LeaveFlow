@@ -27,7 +27,10 @@ export function AdminRequestCard({ request, profiles }: { request: TimeOffReques
         ) : null}
         {request.reason ? <p className="request-reason" title={request.reason}>{request.reason}</p> : null}
       </div>
-      <StatusBadge value={request.status} />
+      <div className="pill-row">
+        <StatusBadge value={request.status} />
+        {request.status === "Pending" && request.editedAt ? <StatusBadge value="Updated" /> : null}
+      </div>
       <div className="actions">
         <form action={setRequestStatusAction}>
           <input type="hidden" name="requestId" value={request.id} />

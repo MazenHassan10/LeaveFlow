@@ -81,6 +81,8 @@ create table if not exists time_off_requests (
   approver_email text,
   approver_comment text,
   approved_at timestamptz,
+  edited_at timestamptz,
+  cancelled_at timestamptz,
   submitted_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );

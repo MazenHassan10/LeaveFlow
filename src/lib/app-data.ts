@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
 import { formatCivilDate, losAngelesDate, losAngelesYear } from "./app-time";
 import { buildReportCalendarEvents } from "./report-calendar";
-import { sendNewRequestEmail, sendRequestDecisionEmail } from "./email";
+import { sendNewRequestEmail, sendRequestDecisionEmail, type RequestEmailKind } from "./email";
 import {
   AppRole,
   MakeupStatus,
@@ -73,6 +73,8 @@ export type TimeOffRequest = {
   approverEmail?: string | null;
   approverComment?: string | null;
   approvedAt?: string | null;
+  editedAt?: string | null;
+  cancelledAt?: string | null;
   submittedAt: string;
   segments: TimeOffSegment[];
   makeupEntries: MakeupEntry[];
@@ -220,6 +222,8 @@ function mapRequest(row: Record<string, any>, segments: TimeOffSegment[], makeup
     approverEmail: row.approver_email,
     approverComment: row.approver_comment,
     approvedAt: row.approved_at?.toISOString?.() || row.approved_at,
+    editedAt: row.edited_at?.toISOString?.() || row.edited_at || null,
+    cancelledAt: row.cancelled_at?.toISOString?.() || row.cancelled_at || null,
     submittedAt: row.submitted_at?.toISOString?.() || row.submitted_at,
     segments,
     makeupEntries
@@ -508,7 +512,7 @@ export async function markEmailNotification(
   );
 }
 
-async function notifyAdminsOfSubmittedRequest(employee: UserProfile, requestId: string) {
+async function notifyAdminsOfSubmittedRequest(employee: UserProfile, requestId: string, kind: RequestEmailKind = "new") {
   try {
     const [admins, details] = await Promise.all([
       getActiveAdminProfiles(),
@@ -518,7 +522,7 @@ async function notifyAdminsOfSubmittedRequest(employee: UserProfile, requestId: 
     // A Manager is both an admin and an employee; don't email them about their own request.
     const recipients = admins.filter((admin) => admin.id !== employee.id);
     if (recipients.length === 0) return;
-    await sendNewRequestEmail(recipients, employee, details.request);
+    await sendNewRequestEmail(recipients, employee, details.request, kind);
   } catch (error) {
     console.error("Failed to send new request notification", error);
   }
@@ -611,7 +615,7 @@ function makeupEntriesMatch(left: ParsedMakeupEntry[], right: ParsedMakeupEntry[
 
 function memoryRequestMatchesPayload(request: TimeOffRequest, payload: RequestPayload) {
   const segment = request.segments[0];
-  if (!segment) return false;
+  if (!segment || request.status === "Cancelled") return false;
 
   return request.requestType === payload.requestType
     && normalizeReason(request.reason) === payload.reason
@@ -627,7 +631,7 @@ function memoryRequestMatchesPayload(request: TimeOffRequest, payload: RequestPa
     })), payload.makeupEntries);
 }
 
-async function hasDuplicateRequest(client: Pick<Pool, "query">, actor: UserProfile, payload: RequestPayload) {
+async function hasDuplicateRequest(client: Pick<Pool, "query">, actor: UserProfile, payload: RequestPayload, excludeRequestId?: string) {
   const candidates = await client.query(
     `select r.id
      from time_off_requests r
@@ -638,8 +642,10 @@ async function hasDuplicateRequest(client: Pick<Pool, "query">, actor: UserProfi
        and s.request_date = $4
        and s.start_time = $5
        and s.end_time = $6
-       and s.requested_hours = $7`,
-    [actor.id, payload.requestType, payload.reason, payload.segmentDate, payload.segmentStart, payload.segmentEnd, payload.requestedHours]
+       and s.requested_hours = $7
+       and r.status <> 'Cancelled'
+       and ($8::uuid is null or r.id <> $8::uuid)`,
+    [actor.id, payload.requestType, payload.reason, payload.segmentDate, payload.segmentStart, payload.segmentEnd, payload.requestedHours, excludeRequestId ?? null]
   );
 
   for (const candidate of candidates.rows) {
@@ -900,8 +906,12 @@ export async function updatePtoAllowance(actor: UserProfile, employeeId: string,
   await audit(actor.email, "admin.pto_allowance_updated", "pto_balance", employeeId);
 }
 
-export async function createTimeOffRequest(actor: UserProfile, formData: FormData): Promise<CreateRequestResult> {
-  if (actor.status !== "Active") throw new Error("Active profile required.");
+function roundHours(value: number) {
+  return Number(value.toFixed(2));
+}
+
+// Shared by submit and edit so both enforce the same rules.
+export function parseRequestPayload(formData: FormData): RequestPayload {
   const requestType = String(formData.get("requestType")) as RequestType;
   const reason = normalizeReason(String(formData.get("reason") || ""));
   const segmentDate = String(formData.get("segmentDate"));
@@ -909,12 +919,60 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
   const segmentEnd = String(formData.get("segmentEnd"));
   const makeupEntries = parseMakeupEntries(formData);
   const requestedHours = calculateHours(segmentStart, segmentEnd);
-  const makeupHours = Number(makeupEntries.reduce((total, entry) => total + entry.plannedHours, 0).toFixed(2));
-  if (!requestedHours) throw new Error("Requested time must have a valid start and end.");
-  if (requestType !== "PTO" && !makeupHours) throw new Error("Additional time off requires a make-up plan.");
-  const payload: RequestPayload = { requestType, reason, segmentDate, segmentStart, segmentEnd, requestedHours, makeupEntries };
+  const makeupHours = roundHours(makeupEntries.reduce((total, entry) => total + entry.plannedHours, 0));
 
-  const segmentYear = Number(segmentDate.slice(0, 4));
+  if (!requestedHours) throw new Error("Requested time must have a valid start and end.");
+  if (requestType !== "PTO") {
+    if (!makeupHours) throw new Error("Additional time off requires a make-up plan.");
+    if (makeupHours < requestedHours) {
+      throw new Error(
+        `Your make-up plan covers ${makeupHours}h but you're taking ${requestedHours}h off. ` +
+        `Add ${roundHours(requestedHours - makeupHours)}h more make-up time.`
+      );
+    }
+  }
+  return { requestType, reason, segmentDate, segmentStart, segmentEnd, requestedHours, makeupEntries };
+}
+
+function payloadMakeupHours(payload: RequestPayload) {
+  return roundHours(payload.makeupEntries.reduce((total, entry) => total + entry.plannedHours, 0));
+}
+
+function payloadYear(payload: RequestPayload) {
+  return Number(payload.segmentDate.slice(0, 4));
+}
+
+function buildMemoryChildren(requestId: string, payload: RequestPayload) {
+  return {
+    segments: [{
+      id: uuid(), requestId, date: payload.segmentDate, startTime: payload.segmentStart,
+      endTime: payload.segmentEnd, requestedHours: payload.requestedHours
+    }],
+    makeupEntries: payload.makeupEntries.map((entry) => ({ id: uuid(), requestId, ...entry, verificationStatus: "Pending" as MakeupStatus }))
+  };
+}
+
+async function insertRequestChildren(client: Queryable, requestId: string, payload: RequestPayload) {
+  await client.query(
+    `insert into time_off_request_segments (request_id, request_date, start_time, end_time, requested_hours)
+     values ($1, $2, $3, $4, $5)`,
+    [requestId, payload.segmentDate, payload.segmentStart, payload.segmentEnd, payload.requestedHours]
+  );
+  for (const entry of payload.makeupEntries) {
+    await client.query(
+      `insert into makeup_plan_entries (request_id, makeup_date, start_time, end_time, planned_hours)
+       values ($1, $2, $3, $4, $5)`,
+      [requestId, entry.date, entry.startTime, entry.endTime, entry.plannedHours]
+    );
+  }
+}
+
+export async function createTimeOffRequest(actor: UserProfile, formData: FormData): Promise<CreateRequestResult> {
+  if (actor.status !== "Active") throw new Error("Active profile required.");
+  const payload = parseRequestPayload(formData);
+  const { requestType, reason, segmentDate, requestedHours } = payload;
+  const makeupHours = payloadMakeupHours(payload);
+  const segmentYear = payloadYear(payload);
 
   if (!pool) {
     const duplicate = memory.requests.some((request) => request.employeeId === actor.id && memoryRequestMatchesPayload(request, payload));
@@ -936,8 +994,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
       requiresMakeupPlan: requestType !== "PTO",
       status: "Pending",
       submittedAt: new Date().toISOString(),
-      segments: [{ id: uuid(), requestId, date: segmentDate, startTime: segmentStart, endTime: segmentEnd, requestedHours }],
-      makeupEntries: makeupEntries.map((entry) => ({ id: uuid(), requestId, ...entry, verificationStatus: "Pending" }))
+      ...buildMemoryChildren(requestId, payload)
     });
     await audit(actor.email, "employee.request_submitted", "time_off_request", requestId);
     await notifyAdminsOfSubmittedRequest(actor, requestId);
@@ -965,18 +1022,7 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
       [actor.id, requestType, reason, requestedHours, makeupHours, isLateNotice(losAngelesDate(), segmentDate), requestType !== "PTO"]
     );
     const requestId = request.rows[0].id;
-    await client.query(
-      `insert into time_off_request_segments (request_id, request_date, start_time, end_time, requested_hours)
-       values ($1, $2, $3, $4, $5)`,
-      [requestId, segmentDate, segmentStart, segmentEnd, requestedHours]
-    );
-    for (const entry of makeupEntries) {
-      await client.query(
-        `insert into makeup_plan_entries (request_id, makeup_date, start_time, end_time, planned_hours)
-         values ($1, $2, $3, $4, $5)`,
-        [requestId, entry.date, entry.startTime, entry.endTime, entry.plannedHours]
-      );
-    }
+    await insertRequestChildren(client, requestId, payload);
     await client.query("commit");
     await audit(actor.email, "employee.request_submitted", "time_off_request", requestId);
     await notifyAdminsOfSubmittedRequest(actor, requestId);
@@ -987,6 +1033,113 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
   } finally {
     client.release();
   }
+}
+
+function assertOwnPendingRequest(actor: UserProfile, request: { employeeId: string; status: RequestStatus } | undefined, verb: string) {
+  if (!request) throw new Error("Request not found.");
+  if (request.employeeId !== actor.id) throw new Error(`You can only ${verb} your own requests.`);
+  if (request.status !== "Pending") throw new Error(`Only pending requests can be ${verb === "edit" ? "edited" : "cancelled"}.`);
+}
+
+// Employees may cancel their own request while it is still pending. It is kept, marked Cancelled.
+export async function cancelRequest(actor: UserProfile, requestId: string) {
+  if (actor.status !== "Active") throw new Error("Active profile required.");
+
+  if (!pool) {
+    const request = memory.requests.find((item) => item.id === requestId);
+    assertOwnPendingRequest(actor, request, "cancel");
+    request!.status = "Cancelled";
+    request!.cancelledAt = new Date().toISOString();
+  } else {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const result = await client.query("select employee_id, status from time_off_requests where id = $1 for update", [requestId]);
+      const row = result.rows[0];
+      assertOwnPendingRequest(actor, row && { employeeId: row.employee_id, status: row.status }, "cancel");
+      await client.query("update time_off_requests set status = 'Cancelled', cancelled_at = now() where id = $1", [requestId]);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  await audit(actor.email, "employee.request_cancelled", "time_off_request", requestId);
+  await notifyAdminsOfSubmittedRequest(actor, requestId, "cancelled");
+}
+
+export type UpdateRequestResult = { status: "updated" | "duplicate" };
+
+// Employees may change their own pending request; it is re-validated and stays pending.
+export async function updatePendingRequest(actor: UserProfile, requestId: string, formData: FormData): Promise<UpdateRequestResult> {
+  if (actor.status !== "Active") throw new Error("Active profile required.");
+  const payload = parseRequestPayload(formData);
+  const { requestType, reason, segmentDate, requestedHours } = payload;
+  const makeupHours = payloadMakeupHours(payload);
+  const segmentYear = payloadYear(payload);
+
+  if (!pool) {
+    const request = memory.requests.find((item) => item.id === requestId);
+    assertOwnPendingRequest(actor, request, "edit");
+    const duplicate = memory.requests.some((item) =>
+      item.id !== requestId && item.employeeId === actor.id && memoryRequestMatchesPayload(item, payload)
+    );
+    if (duplicate) return { status: "duplicate" };
+    if (requestType === "PTO") {
+      const remaining = memoryRemainingPto(actor.id, segmentYear);
+      if (requestedHours > remaining) throw new Error(insufficientPtoMessage(requestedHours, remaining, segmentYear));
+    }
+    Object.assign(request!, {
+      requestType,
+      reason,
+      totalRequestedHours: requestedHours,
+      totalMakeupHours: makeupHours,
+      isLateNotice: isLateNotice(losAngelesDate(), segmentDate),
+      requiresMakeupPlan: requestType !== "PTO",
+      editedAt: new Date().toISOString(),
+      ...buildMemoryChildren(requestId, payload)
+    });
+  } else {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const result = await client.query("select employee_id, status from time_off_requests where id = $1 for update", [requestId]);
+      const row = result.rows[0];
+      assertOwnPendingRequest(actor, row && { employeeId: row.employee_id, status: row.status }, "edit");
+      await lockDuplicatePayload(client, actor, payload);
+      if (await hasDuplicateRequest(client, actor, payload, requestId)) {
+        await client.query("commit");
+        return { status: "duplicate" };
+      }
+      if (requestType === "PTO") {
+        const remaining = await remainingPto(client, actor.id, segmentYear);
+        if (requestedHours > remaining) throw new Error(insufficientPtoMessage(requestedHours, remaining, segmentYear));
+      }
+      await client.query(
+        `update time_off_requests
+         set request_type = $2, reason = $3, total_requested_hours = $4, total_makeup_hours = $5,
+             is_late_notice = $6, requires_makeup_plan = $7, edited_at = now()
+         where id = $1`,
+        [requestId, requestType, reason, requestedHours, makeupHours, isLateNotice(losAngelesDate(), segmentDate), requestType !== "PTO"]
+      );
+      await client.query("delete from time_off_request_segments where request_id = $1", [requestId]);
+      await client.query("delete from makeup_plan_entries where request_id = $1", [requestId]);
+      await insertRequestChildren(client, requestId, payload);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  await audit(actor.email, "employee.request_updated", "time_off_request", requestId);
+  await notifyAdminsOfSubmittedRequest(actor, requestId, "updated");
+  return { status: "updated" };
 }
 
 export async function setRequestStatus(actor: UserProfile, requestId: string, status: Extract<RequestStatus, "Approved" | "Rejected">) {

@@ -27,10 +27,12 @@ const groups = buildApprovalGroups([
   request("cancelled-1", "Cancelled"),
 ]);
 
-assert.deepEqual(groups.map((group) => group.key), ["pending", "approved", "rejected"]);
-assert.deepEqual(groups.map((group) => group.requests.length), [1, 2, 1]);
+assert.deepEqual(groups.map((group) => group.key), ["pending", "approved", "rejected", "cancelled"]);
+assert.deepEqual(groups.map((group) => group.requests.length), [1, 2, 1, 1]);
 assert.equal(groups[0].title, "Pending approvals");
 assert.equal(groups[1].empty, "No approved requests.");
-assert.equal(groups.flatMap((group) => group.requests).some((item) => item.status === "Cancelled"), false);
+// Employee-cancelled requests stay visible to admins in their own group.
+assert.equal(groups[3].title, "Cancelled by employee");
+assert.deepEqual(groups[3].requests.map((item) => item.id), ["cancelled-1"]);
 
 console.log("Approval grouping tests passed.");

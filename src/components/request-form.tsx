@@ -1,7 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { submitTimeOffRequest, type SubmitRequestState } from "@/app/actions";
+import { submitTimeOffRequest, updateTimeOffRequest, type SubmitRequestState } from "@/app/actions";
+import type { TimeOffRequest } from "@/src/lib/app-data";
+import { formatPacificRangeIn } from "@/src/lib/app-time";
+import { calculateHours } from "@/src/lib/pto";
 import { SHIFT_PRESETS, shiftPresetFor, type ShiftPresetValue } from "@/src/lib/shift-presets";
 import { DatePickerInput } from "./date-picker-input";
 import { DropdownField } from "./dropdown-field";
@@ -39,14 +44,60 @@ const shiftPresetOptions = SHIFT_PRESETS.map((preset) => ({
   label: `${preset.label}${preset.hours ? ` (${preset.hours}h)` : ""}`,
 }));
 
-export function RequestForm() {
-  const [requestType, setRequestType] = useState("PTO");
-  const [segmentDate, setSegmentDate] = useState("");
-  const [timeOff, setTimeOff] = useState<TimeSelection>({ preset: "custom", startTime: "", endTime: "" });
-  const [makeupRows, setMakeupRows] = useState<MakeupRow[]>([{ id: 1, date: "", preset: "custom", startTime: "", endTime: "" }]);
-  const [state, formAction] = useActionState(submitTimeOffRequest, initialState);
+function presetForTimes(startTime: string, endTime: string): ShiftPresetValue {
+  return SHIFT_PRESETS.find((preset) => preset.value !== "custom" && preset.startTime === startTime && preset.endTime === endTime)?.value ?? "custom";
+}
+
+function initialMakeupRows(request?: TimeOffRequest | null): MakeupRow[] {
+  if (!request?.makeupEntries.length) return [{ id: 1, date: "", preset: "custom", startTime: "", endTime: "" }];
+  return request.makeupEntries.map((entry, index) => ({
+    id: index + 1,
+    date: entry.date,
+    preset: presetForTimes(entry.startTime, entry.endTime),
+    startTime: entry.startTime,
+    endTime: entry.endTime
+  }));
+}
+
+function roundHours(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function CairoHint({ date, startTime, endTime }: { date: string; startTime: string; endTime: string }) {
+  const range = formatPacificRangeIn(date, startTime, endTime);
+  if (!range) return null;
+  return <p className="form-hint tz-hint">= {range}</p>;
+}
+
+type RequestFormProps = {
+  // Remaining PTO for the current year, used to warn before submitting.
+  ptoRemaining: number;
+  // When set, the form edits this pending request instead of creating a new one.
+  editRequest?: TimeOffRequest | null;
+};
+
+export function RequestForm({ ptoRemaining, editRequest }: RequestFormProps) {
+  const router = useRouter();
+  const editSegment = editRequest?.segments[0];
+  const [requestType, setRequestType] = useState<string>(editRequest?.requestType ?? "PTO");
+  const [segmentDate, setSegmentDate] = useState(editSegment?.date ?? "");
+  const [timeOff, setTimeOff] = useState<TimeSelection>(editSegment
+    ? { preset: presetForTimes(editSegment.startTime, editSegment.endTime), startTime: editSegment.startTime, endTime: editSegment.endTime }
+    : { preset: "custom", startTime: "", endTime: "" });
+  const [makeupRows, setMakeupRows] = useState<MakeupRow[]>(() => initialMakeupRows(editRequest));
+  const [state, formAction] = useActionState(editRequest ? updateTimeOffRequest : submitTimeOffRequest, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const previousRowCount = useRef(makeupRows.length);
+
+  const requestedHours = calculateHours(timeOff.startTime, timeOff.endTime);
+  const makeupHours = roundHours(makeupRows.reduce((total, row) => total + calculateHours(row.startTime, row.endTime), 0));
+  const needsMakeup = requestType !== "PTO";
+  const makeupCovered = makeupHours >= requestedHours && makeupHours > 0;
+  const exceedsPto = requestType === "PTO" && requestedHours > ptoRemaining;
+
+  useEffect(() => {
+    if (state.status === "updated") router.replace("/employee?updated=1");
+  }, [state.status, router]);
 
   function addMakeupRow() {
     setMakeupRows((rows) => [
@@ -109,8 +160,15 @@ export function RequestForm() {
   }, [makeupRows.length]);
 
   return (
-    <form action={formAction} className="panel form-panel" ref={formRef}>
-      <h2>New request</h2>
+    <form action={formAction} className="panel form-panel" ref={formRef} id="request-form">
+      <div className="split">
+        <h2>{editRequest ? "Edit request" : "New request"}</h2>
+        {editRequest ? <Link className="btn-ghost compact" href="/employee">Cancel editing</Link> : null}
+      </div>
+      {editRequest ? <input type="hidden" name="requestId" value={editRequest.id} /> : null}
+      <p className="form-hint">
+        All times are <strong>Pacific Time (PT)</strong>. The Cairo time is shown under each entry so you can double-check.
+      </p>
       {state.status !== "idle" ? (
         <p className={`notice ${state.status === "error" ? "warning" : "success"}`}>{state.message}</p>
       ) : null}
@@ -126,7 +184,7 @@ export function RequestForm() {
       </label>
       <label>
         Reason
-        <textarea name="reason" placeholder="Brief written request" />
+        <textarea name="reason" placeholder="Brief written request" defaultValue={editRequest?.reason ?? ""} />
       </label>
       <h3>Time off</h3>
       <div className="field-grid shift-grid">
@@ -164,6 +222,14 @@ export function RequestForm() {
           />
         </label>
       </div>
+      <CairoHint date={segmentDate} startTime={timeOff.startTime} endTime={timeOff.endTime} />
+      {requestType === "PTO" ? (
+        <p className={`notice ${exceedsPto ? "warning" : "info"}`} role={exceedsPto ? "alert" : undefined}>
+          {exceedsPto
+            ? `This needs ${requestedHours}h of PTO but you only have ${ptoRemaining}h left. It will be refused.`
+            : `You have ${ptoRemaining}h of PTO left this year.`}
+        </p>
+      ) : null}
       <div className="split">
         <h3>Make-up plan</h3>
         <button className="btn-ghost compact" type="button" onClick={addMakeupRow}>
@@ -221,6 +287,7 @@ export function RequestForm() {
                   ))}
                 />
               </label>
+              <CairoHint date={row.date} startTime={row.startTime} endTime={row.endTime} />
             </div>
             {makeupRows.length > 1 ? (
               <button
@@ -235,7 +302,15 @@ export function RequestForm() {
           </div>
         ))}
       </div>
-      <PendingSubmitButton pendingLabel="Submitting...">Submit request</PendingSubmitButton>
+      {needsMakeup && requestedHours > 0 ? (
+        <p className={`notice ${makeupCovered ? "success" : "warning"}`} aria-live="polite">
+          Make-up planned: <strong>{makeupHours}h</strong> of <strong>{requestedHours}h</strong> needed
+          {makeupCovered ? " ✓" : ` (add ${roundHours(requestedHours - makeupHours)}h more)`}
+        </p>
+      ) : null}
+      <PendingSubmitButton pendingLabel={editRequest ? "Saving..." : "Submitting..."}>
+        {editRequest ? "Save changes" : "Submit request"}
+      </PendingSubmitButton>
     </form>
   );
 }

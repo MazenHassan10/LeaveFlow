@@ -6,7 +6,7 @@ function variantFor(value: string): BadgeProps["variant"] {
   if (["approved", "worked", "active", "admin", "owner"].includes(key)) return "success";
   if (["pending", "not worked"].includes(key)) return "warning";
   if (["rejected", "disabled"].includes(key)) return "destructive";
-  if (key === "employee") return "default";
+  if (key === "employee" || key === "cancelled") return "default";
   if (key === "manager") return "violet";
   return "violet";
 }
