@@ -96,6 +96,7 @@ export function RequestCard({ request }: { request: TimeOffRequest }) {
       {request.reason ? <p className="request-reason">{request.reason}</p> : null}
       {request.isLateNotice ? <p className="notice warning">Late notice: under 14 calendar days.</p> : null}
       <small className="request-decision">{decisionLine(request)}</small>
+      {request.approverComment ? <p className="decision-note"><strong>Note from your admin:</strong> {request.approverComment}</p> : null}
 
       {isPending ? (
         <div className="actions">

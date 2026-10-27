@@ -1,4 +1,4 @@
-import { formatDateLabelInLosAngeles, formatTimeRange12Hour } from "./app-time";
+import { formatTimeRange12Hour, formatWeekdayDateLabel } from "./app-time";
 import type { ReportCalendarEvent } from "./report-calendar";
 import type { TimeOffRequest, UserProfile } from "./app-data";
 
@@ -13,7 +13,13 @@ type TableColumn<T> = {
   label: string;
   value: (item: T) => string | number;
   align?: "left" | "right";
+  width?: string;
+  nowrap?: boolean;
 };
+
+function columnStyle<T>(column: TableColumn<T>) {
+  return `${column.width ? `width:${column.width};` : ""}${column.nowrap ? "white-space:nowrap;" : ""}`;
+}
 
 type SummaryMetric = {
   label: string;
@@ -104,7 +110,7 @@ function renderDataTable<T>(columns: TableColumn<T>[], rows: T[], empty: string)
       <thead>
         <tr>
           ${columns.map((column) => `
-            <th align="${column.align || "left"}" style="padding:12px 14px;background:#11131a;color:#ffffff;font-size:12px;line-height:1.4;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">${escapeHtml(column.label)}</th>
+            <th align="${column.align || "left"}" style="${columnStyle(column)}padding:12px 14px;background:#11131a;color:#ffffff;font-size:12px;line-height:1.4;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">${escapeHtml(column.label)}</th>
           `).join("")}
         </tr>
       </thead>
@@ -112,7 +118,7 @@ function renderDataTable<T>(columns: TableColumn<T>[], rows: T[], empty: string)
         ${rows.map((row, rowIndex) => `
           <tr>
             ${columns.map((column) => `
-              <td align="${column.align || "left"}" style="padding:13px 14px;border-top:${rowIndex ? "1px solid #eef3f7" : "0"};font-size:14px;line-height:1.45;color:#11131a;font-weight:600;">${escapeHtml(column.value(row))}</td>
+              <td align="${column.align || "left"}" style="${columnStyle(column)}padding:13px 14px;border-top:${rowIndex ? "1px solid #eef3f7" : "0"};font-size:14px;line-height:1.45;color:#11131a;font-weight:600;">${escapeHtml(column.value(row))}</td>
             `).join("")}
           </tr>
         `).join("")}
@@ -156,10 +162,12 @@ function renderEmailLayout({
   intro,
   badge,
   badgeTone = "info",
+  greeting,
   body,
 }: {
   eyebrow: string;
   title: string;
+  greeting?: string;
   intro: string;
   badge?: string;
   badgeTone?: "info" | "success" | "danger";
@@ -191,7 +199,8 @@ function renderEmailLayout({
                       ${badge ? `<td align="right" style="vertical-align:top;padding-left:12px;"><span style="display:inline-block;border:1px solid;border-radius:999px;padding:7px 11px;font-size:12px;line-height:1;font-weight:800;${badgeStyles}">${escapeHtml(badge)}</span></td>` : ""}
                     </tr>
                   </table>
-                  <p style="margin:16px 0 0;font-size:15px;line-height:1.55;color:#3d4653;">${escapeHtml(intro)}</p>
+                  ${greeting ? `<p style="margin:16px 0 0;font-size:16px;line-height:1.5;font-weight:700;color:#11131a;">${escapeHtml(greeting)}</p>` : ""}
+                  <p style="margin:${greeting ? "6px" : "16px"} 0 0;font-size:15px;line-height:1.55;color:#3d4653;">${escapeHtml(intro)}</p>
                   ${body}
                 </div>
               </td>
@@ -211,7 +220,7 @@ function renderEmailLayout({
 
 function requestedTimeRows(request: TimeOffRequest) {
   return request.segments.map((segment) => ({
-    date: formatDateLabelInLosAngeles(segment.date),
+    date: formatWeekdayDateLabel(segment.date),
     time: formatTimeRange12Hour(segment.startTime, segment.endTime),
     hours: segment.requestedHours,
   }));
@@ -219,7 +228,7 @@ function requestedTimeRows(request: TimeOffRequest) {
 
 function makeupRows(request: TimeOffRequest) {
   return request.makeupEntries.map((entry) => ({
-    date: formatDateLabelInLosAngeles(entry.date),
+    date: formatWeekdayDateLabel(entry.date),
     time: formatTimeRange12Hour(entry.startTime, entry.endTime),
     hours: entry.plannedHours,
     status: entry.verificationStatus,
@@ -254,7 +263,7 @@ function makeupPlanTable(request: TimeOffRequest) {
 function requestTimeSummary(request: TimeOffRequest) {
   return request.segments
     .map((segment) => {
-      return `${formatDateLabelInLosAngeles(segment.date)}, ${formatTimeRange12Hour(segment.startTime, segment.endTime)} (${segment.requestedHours}h)`;
+      return `${formatWeekdayDateLabel(segment.date)}, ${formatTimeRange12Hour(segment.startTime, segment.endTime)} (${segment.requestedHours}h)`;
     })
     .join("\n");
 }
@@ -263,7 +272,7 @@ function makeupSummary(request: TimeOffRequest) {
   if (!request.makeupEntries.length) return "None";
   return request.makeupEntries
     .map((entry) => {
-      return `${formatDateLabelInLosAngeles(entry.date)}, ${formatTimeRange12Hour(entry.startTime, entry.endTime)} (${entry.plannedHours}h)`;
+      return `${formatWeekdayDateLabel(entry.date)}, ${formatTimeRange12Hour(entry.startTime, entry.endTime)} (${entry.plannedHours}h)`;
     })
     .join("\n");
 }
@@ -361,8 +370,11 @@ export function buildNewRequestEmail(
   };
 }
 
-export function buildRequestDecisionEmail(employee: UserProfile, request: TimeOffRequest): EmailMessage {
+export function buildRequestDecisionEmail(employee: UserProfile, request: TimeOffRequest, approverName?: string): EmailMessage {
   const status = request.status.toLowerCase();
+  const decidedBy = approverName || request.approverEmail || "Not recorded";
+  const note = request.approverComment?.trim();
+  const noteHeading = `Note from ${approverName || "your admin"}`;
   const employeeUrl = appUrl("/employee");
   const approved = request.status === "Approved";
   const title = approved ? "Request approved" : request.status === "Rejected" ? "Request rejected" : `Request ${status}`;
@@ -373,13 +385,15 @@ export function buildRequestDecisionEmail(employee: UserProfile, request: TimeOf
     `Requested time:`,
     requestTimeSummary(request),
     `Requested hours: ${request.totalRequestedHours}`,
-    request.approverEmail ? `Approver: ${request.approverEmail}` : "Approver: Not recorded",
+    `Decided by: ${decidedBy}`,
+    ...(note ? ["", `${noteHeading}:`, note] : []),
     "",
     `View your requests here: ${employeeUrl}`
   ].join("\n");
   const html = renderEmailLayout({
     eyebrow: "Request update",
     title,
+    greeting: `Hi ${employee.fullName},`,
     intro: approved
       ? `Your ${request.requestType} request has been approved.`
       : `Your ${request.requestType} request has been ${status}.`,
@@ -395,8 +409,9 @@ export function buildRequestDecisionEmail(employee: UserProfile, request: TimeOf
         ["Request type", request.requestType],
         ["Requested hours", `${request.totalRequestedHours}h`],
         ["Make-up hours", `${request.totalMakeupHours}h`],
-        ["Approver", request.approverEmail || "Not recorded"],
+        ["Decided by", decidedBy],
       ])),
+      note ? renderSection(noteHeading, renderReason(note)) : "",
       renderSection("Requested time", requestedTimeTable(request)),
       request.makeupEntries.length ? renderSection("Make-up plan", makeupPlanTable(request)) : "",
       renderCta("View my requests", employeeUrl),
@@ -412,7 +427,7 @@ export function buildRequestDecisionEmail(employee: UserProfile, request: TimeOf
 }
 
 function reminderWhen(date: string, daysAhead: number) {
-  const label = formatDateLabelInLosAngeles(date);
+  const label = formatWeekdayDateLabel(date);
   return daysAhead === 1 ? `tomorrow (${label})` : `in ${daysAhead} days (${label})`;
 }
 
@@ -438,15 +453,16 @@ export function buildAdminReminderEmail(admin: UserProfile, date: string, events
   const html = renderEmailLayout({
     eyebrow: daysAhead === 1 ? "Tomorrow's schedule" : `Coming up in ${daysAhead} days`,
     title: "Approved events reminder",
-    intro: `${formatDateLabelInLosAngeles(date)} has approved time off or make-up work scheduled.`,
+    greeting: `Hi ${admin.fullName},`,
+    intro: `${formatWeekdayDateLabel(date)} has approved time off or make-up work scheduled.`,
     badge: `${events.length} event${events.length === 1 ? "" : "s"}`,
     body: [
       renderSection("Events", renderDataTable(
         [
-          { label: "Type", value: (event) => eventTypeLabel(event) },
+          { label: "Type", value: (event) => eventTypeLabel(event), width: "92px", nowrap: true },
           { label: "Employee", value: (event) => `${event.employeeName} (${event.employeeEmail})` },
-          { label: "Time", value: (event) => formatTimeRange12Hour(event.startTime, event.endTime) },
-          { label: "Hours", value: (event) => `${event.hours}h`, align: "right" },
+          { label: "Time (PT)", value: (event) => formatTimeRange12Hour(event.startTime, event.endTime), nowrap: true },
+          { label: "Hours", value: (event) => `${event.hours}h`, align: "right", nowrap: true },
         ],
         events,
         "No events scheduled."
@@ -496,14 +512,15 @@ export function buildEmployeeReminderEmail(
   const html = renderEmailLayout({
     eyebrow: daysAhead === 1 ? "Tomorrow" : `In ${daysAhead} days`,
     title: hasMakeup ? "Make-up shift reminder" : "Time off reminder",
-    intro: `You have approved ${what} on ${formatDateLabelInLosAngeles(date)}. Times are Pacific Time.`,
+    greeting: `Hi ${employee.name},`,
+    intro: `You have approved ${what} on ${formatWeekdayDateLabel(date)}. Times are Pacific Time.`,
     badge: `${events.length} item${events.length === 1 ? "" : "s"}`,
     body: [
       renderSection("Your schedule", renderDataTable(
         [
-          { label: "Type", value: (event) => eventTypeLabel(event) },
-          { label: "Time (PT)", value: (event) => formatTimeRange12Hour(event.startTime, event.endTime) },
-          { label: "Hours", value: (event) => `${event.hours}h`, align: "right" },
+          { label: "Type", value: (event) => eventTypeLabel(event), width: "92px", nowrap: true },
+          { label: "Time (PT)", value: (event) => formatTimeRange12Hour(event.startTime, event.endTime), nowrap: true },
+          { label: "Hours", value: (event) => `${event.hours}h`, align: "right", nowrap: true },
         ],
         events,
         "Nothing scheduled."
@@ -605,8 +622,8 @@ export async function sendNewRequestEmail(
   return sendEmail(message);
 }
 
-export async function sendRequestDecisionEmail(employee: UserProfile, request: TimeOffRequest) {
-  return sendEmail(buildRequestDecisionEmail(employee, request));
+export async function sendRequestDecisionEmail(employee: UserProfile, request: TimeOffRequest, approverName?: string) {
+  return sendEmail(buildRequestDecisionEmail(employee, request, approverName));
 }
 
 export async function sendDayBeforeReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[]) {

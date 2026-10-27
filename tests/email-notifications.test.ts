@@ -73,7 +73,7 @@ const approvedEmail = buildRequestDecisionEmail(employee, {
 });
 assert.deepEqual(approvedEmail.to, ["employee@example.com"]);
 assert.equal(approvedEmail.subject, "Your LeaveFlow request was approved");
-assert.match(approvedEmail.text, /Approver: admin@example.com/);
+assert.match(approvedEmail.text, /Decided by: admin@example.com/);
 assert.match(approvedEmail.text, /\/employee/);
 assert.match(approvedEmail.html, /Request approved/);
 assert.match(approvedEmail.html, /View my requests/);

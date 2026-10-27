@@ -528,11 +528,11 @@ async function notifyAdminsOfSubmittedRequest(employee: UserProfile, requestId: 
   }
 }
 
-async function notifyEmployeeOfRequestDecision(requestId: string) {
+async function notifyEmployeeOfRequestDecision(requestId: string, approverName?: string) {
   try {
     const details = await getRequestDetails(requestId);
     if (!details) return;
-    await sendRequestDecisionEmail(details.employee, details.request);
+    await sendRequestDecisionEmail(details.employee, details.request, approverName);
   } catch (error) {
     console.error("Failed to send request decision notification", error);
   }
@@ -1142,12 +1142,29 @@ export async function updatePendingRequest(actor: UserProfile, requestId: string
   return { status: "updated" };
 }
 
-export async function setRequestStatus(actor: UserProfile, requestId: string, status: Extract<RequestStatus, "Approved" | "Rejected">) {
+const MAX_DECISION_NOTE_LENGTH = 500;
+
+// The note an admin attaches to a decision. Required when rejecting, optional when approving.
+export function normalizeDecisionNote(status: "Approved" | "Rejected", value: string | null | undefined) {
+  const note = (value ?? "").replace(/\s+/g, " ").trim();
+  if (status === "Rejected" && !note) throw new Error("Please add a short reason for the rejection.");
+  if (note.length > MAX_DECISION_NOTE_LENGTH) throw new Error(`Notes must be ${MAX_DECISION_NOTE_LENGTH} characters or fewer.`);
+  return note || null;
+}
+
+export async function setRequestStatus(
+  actor: UserProfile,
+  requestId: string,
+  status: Extract<RequestStatus, "Approved" | "Rejected">,
+  note?: string | null
+) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
+  const decisionNote = normalizeDecisionNote(status, note);
   if (!pool) {
     const request = memory.requests.find((item) => item.id === requestId);
     if (!request) return;
     if (request.employeeId === actor.id) throw new Error("You cannot approve your own request.");
+    if (request.status !== "Pending") throw new Error("This request has already been decided.");
     const isPtoApproval = status === "Approved" && request.requestType === "PTO";
     const hoursByYear = isPtoApproval ? memoryPtoHoursByYear(request) : new Map<number, number>();
     for (const [year, hours] of hoursByYear) {
@@ -1156,6 +1173,7 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
     }
     request.status = status;
     request.approverEmail = actor.email;
+    request.approverComment = decisionNote;
     request.approvedAt = new Date().toISOString();
     for (const year of hoursByYear.keys()) {
       memory.balances[request.employeeId] ||= {
@@ -1169,7 +1187,7 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
       recalculateMemoryPtoBalance(request.employeeId, year);
     }
     await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
-    await notifyEmployeeOfRequestDecision(requestId);
+    await notifyEmployeeOfRequestDecision(requestId, actor.fullName);
     return;
   }
   const client = await pool.connect();
@@ -1184,6 +1202,10 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
       await client.query("rollback");
       throw new Error("You cannot approve your own request.");
     }
+    if (request.rows[0].status !== "Pending") {
+      await client.query("rollback");
+      throw new Error("This request has already been decided.");
+    }
     const employeeId = request.rows[0].employee_id;
     const isPtoApproval = status === "Approved" && request.rows[0].request_type === "PTO";
     const hoursByYear = isPtoApproval ? await ptoHoursByYear(client, requestId) : [];
@@ -1195,15 +1217,15 @@ export async function setRequestStatus(actor: UserProfile, requestId: string, st
       }
     }
     await client.query(
-      "update time_off_requests set status = $1, approver_email = $2, approved_at = now() where id = $3",
-      [status, actor.email, requestId]
+      "update time_off_requests set status = $1, approver_email = $2, approver_comment = $4, approved_at = now() where id = $3",
+      [status, actor.email, requestId, decisionNote]
     );
     for (const { year } of hoursByYear) {
       await recalculatePtoUsed(client, employeeId, year);
     }
     await client.query("commit");
     await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
-    await notifyEmployeeOfRequestDecision(requestId);
+    await notifyEmployeeOfRequestDecision(requestId, actor.fullName);
   } catch (error) {
     await client.query("rollback");
     throw error;

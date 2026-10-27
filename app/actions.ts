@@ -110,10 +110,25 @@ export async function updatePtoAllowanceAction(formData: FormData) {
   revalidateDashboardRoutes();
 }
 
-export async function setRequestStatusAction(formData: FormData) {
-  const actor = await currentProfile();
-  await setRequestStatus(actor, String(formData.get("requestId")), String(formData.get("status")) as "Approved" | "Rejected");
-  revalidateDashboardRoutes();
+export type DecisionState = { status: "idle" | "done" | "error"; message: string };
+
+// Returns errors instead of throwing: production hides thrown server-action messages,
+// and admins need to see refusals such as an insufficient PTO balance.
+export async function setRequestStatusAction(_previousState: DecisionState, formData: FormData): Promise<DecisionState> {
+  try {
+    const actor = await currentProfile();
+    const status = String(formData.get("status")) as "Approved" | "Rejected";
+    await setRequestStatus(
+      actor,
+      String(formData.get("requestId")),
+      status,
+      formData.has("note") ? String(formData.get("note")) : null
+    );
+    revalidateDashboardRoutes();
+    return { status: "done", message: status === "Approved" ? "Approved." : "Rejected." };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "The request could not be updated." };
+  }
 }
 
 export async function deleteRequestAction(formData: FormData) {

@@ -1435,6 +1435,108 @@ nav a:hover .nav-icon {
   gap: var(--space-3);
 }
 
+.export-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.export-panel > div:first-child {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1 1 280px;
+}
+
+/* Approval filters: employee, month, search and the recent/all switch. */
+.approval-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 2px solid rgba(17, 19, 26, 0.08);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.approval-filters > label {
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.approval-filters-search,
+.approval-filters-footer {
+  grid-column: 1 / -1;
+}
+
+.approval-filters-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.approval-filters-footer small {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary-500);
+}
+
+/* Decision controls: approve, reject with a required reason, or approve with a note. */
+.decision-controls {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.decision-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.decision-buttons form {
+  display: inline-flex;
+}
+
+.decision-note-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.decision-note-form label {
+  gap: var(--space-1);
+}
+
+.decision-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-primary-400);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-primary-50);
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
+}
+
 .approval-group {
   display: grid;
   min-width: 0;

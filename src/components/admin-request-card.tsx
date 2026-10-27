@@ -1,9 +1,10 @@
 import type { TimeOffRequest, UserProfile } from "@/src/lib/app-data";
-import { setRequestStatusAction, verifyMakeupAction } from "@/app/actions";
+import { verifyMakeupAction } from "@/app/actions";
+import { DecisionControls } from "./decision-controls";
 import { StatusBadge } from "./status-badge";
 import { DeleteRequestForm } from "./delete-request-form";
 import { PendingSubmitButton } from "./pending-submit-button";
-import { formatDateLabelInLosAngeles, formatTimeRange12Hour } from "@/src/lib/app-time";
+import { formatTimeRange12Hour, formatWeekdayDateLabel } from "@/src/lib/app-time";
 
 export function AdminRequestCard({ request, profiles }: { request: TimeOffRequest; profiles: UserProfile[] }) {
   const profile = profiles.find((item) => item.id === request.employeeId);
@@ -20,33 +21,25 @@ export function AdminRequestCard({ request, profiles }: { request: TimeOffReques
           <div className="requested-time-list" aria-label="Requested time off">
             {request.segments.map((segment) => (
               <span className="requested-time-pill" key={segment.id}>
-                {formatDateLabelInLosAngeles(segment.date)} · {formatTimeRange12Hour(segment.startTime, segment.endTime)} · {segment.requestedHours}h
+                {formatWeekdayDateLabel(segment.date)} · {formatTimeRange12Hour(segment.startTime, segment.endTime)} · {segment.requestedHours}h
               </span>
             ))}
           </div>
         ) : null}
         {request.reason ? <p className="request-reason" title={request.reason}>{request.reason}</p> : null}
+        {request.approverComment ? <p className="decision-note"><strong>Note:</strong> {request.approverComment}</p> : null}
       </div>
       <div className="pill-row">
         <StatusBadge value={request.status} />
         {request.status === "Pending" && request.editedAt ? <StatusBadge value="Updated" /> : null}
       </div>
       <div className="actions">
-        <form action={setRequestStatusAction}>
-          <input type="hidden" name="requestId" value={request.id} />
-          <input type="hidden" name="status" value="Approved" />
-          <PendingSubmitButton disabled={request.status !== "Pending"} pendingLabel="Approving...">Approve</PendingSubmitButton>
-        </form>
-        <form action={setRequestStatusAction}>
-          <input type="hidden" name="requestId" value={request.id} />
-          <input type="hidden" name="status" value="Rejected" />
-          <PendingSubmitButton className="secondary" disabled={request.status !== "Pending"} pendingLabel="Rejecting...">Reject</PendingSubmitButton>
-        </form>
+        {request.status === "Pending" ? <DecisionControls requestId={request.id} /> : null}
         <DeleteRequestForm requestId={request.id} />
       </div>
       {request.makeupEntries.map((entry) => (
         <div className="makeup-line" key={entry.id}>
-          <span>{entry.date} · {formatTimeRange12Hour(entry.startTime, entry.endTime)} · {entry.plannedHours}h</span>
+          <span>{formatWeekdayDateLabel(entry.date)} · {formatTimeRange12Hour(entry.startTime, entry.endTime)} · {entry.plannedHours}h</span>
           <StatusBadge value={entry.verificationStatus} />
           <form action={verifyMakeupAction}>
             <input type="hidden" name="entryId" value={entry.id} />

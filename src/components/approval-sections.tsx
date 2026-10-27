@@ -2,7 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AppSnapshot } from "@/src/lib/app-data";
-import { buildApprovalGroups, type ApprovalGroupKey } from "@/src/lib/approval-groups";
+import {
+  buildApprovalGroups,
+  DEFAULT_APPROVAL_FILTERS,
+  filterApprovalGroups,
+  RECENT_WINDOW_DAYS,
+  requestMonths,
+  type ApprovalFilters,
+  type ApprovalGroupKey
+} from "@/src/lib/approval-groups";
+import { addCivilDays, losAngelesDate } from "@/src/lib/app-time";
+import { monthLabel } from "@/src/lib/report-calendar";
+import { DropdownField } from "./dropdown-field";
 import { AdminRequestCard } from "./admin-request-card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -18,7 +29,23 @@ const DEFAULT_OPEN: Record<ApprovalGroupKey, boolean> = {
 };
 
 export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
-  const groups = buildApprovalGroups(snapshot.requests);
+  const [filters, setFilters] = useState<ApprovalFilters>(DEFAULT_APPROVAL_FILTERS);
+  const recentFrom = addCivilDays(losAngelesDate(), -RECENT_WINDOW_DAYS);
+  const groups = filterApprovalGroups(buildApprovalGroups(snapshot.requests), filters, snapshot.profiles, recentFrom);
+  const requesterIds = new Set(snapshot.requests.map((request) => request.employeeId));
+  const employeeOptions = [
+    { value: "all", label: "All employees" },
+    ...snapshot.profiles
+      .filter((profile) => requesterIds.has(profile.id))
+      .sort((left, right) => left.fullName.localeCompare(right.fullName))
+      .map((profile) => ({ value: profile.id, label: profile.fullName })),
+  ];
+  const monthOptions = [
+    { value: "any", label: "Any month" },
+    ...requestMonths(snapshot.requests).map((month) => ({ value: month, label: monthLabel(month) })),
+  ];
+  const isFiltered = filters.employeeId !== "all" || filters.month !== "any" || filters.query.trim() !== "";
+  const update = (patch: Partial<ApprovalFilters>) => setFilters((current) => ({ ...current, ...patch }));
   const [openGroups, setOpenGroups] = useState(DEFAULT_OPEN);
   const [renderedGroups, setRenderedGroups] = useState(DEFAULT_OPEN);
   const sectionRefs = useRef<GroupRefs>({ pending: null, approved: null, rejected: null, cancelled: null });
@@ -132,10 +159,42 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
       active = false;
       cleanup?.();
     };
-  }, [groups, openGroups]);
+    // Animate only when a section opens or closes; filtering must not replay the animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openGroups]);
 
   return (
     <div className="approval-sections">
+      <div className="approval-filters" role="search" aria-label="Filter requests">
+        <label>
+          Employee
+          <DropdownField ariaLabel="Employee" value={filters.employeeId} options={employeeOptions} placeholder="All employees" onChange={(employeeId) => update({ employeeId })} />
+        </label>
+        <label>
+          Month
+          <DropdownField ariaLabel="Month" value={filters.month} options={monthOptions} placeholder="Any month" onChange={(month) => update({ month })} />
+        </label>
+        <label className="approval-filters-search">
+          Search
+          <input
+            type="search"
+            value={filters.query}
+            placeholder="Name, email or reason"
+            onChange={(event) => update({ query: event.target.value })}
+          />
+        </label>
+        <div className="approval-filters-footer">
+          <label className="checkbox-label">
+            <input type="checkbox" checked={filters.showAll} onChange={(event) => update({ showAll: event.target.checked })} />
+            Include older decided requests
+          </label>
+          {isFiltered || filters.showAll ? (
+            <button className="btn-ghost compact" type="button" onClick={() => setFilters(DEFAULT_APPROVAL_FILTERS)}>Reset filters</button>
+          ) : (
+            <small>Decided requests from the last {RECENT_WINDOW_DAYS} days and upcoming</small>
+          )}
+        </div>
+      </div>
       {groups.map((group) => {
         const isOpen = openGroups[group.key];
         const shouldRenderGroup = isOpen || renderedGroups[group.key];
@@ -161,7 +220,7 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
                 <span>{group.title}</span>
               </span>
               <Badge className="approval-group-count" variant={group.key === "approved" ? "success" : group.key === "rejected" ? "destructive" : group.key === "cancelled" ? "default" : "warning"}>
-                {group.requests.length}
+                {group.requests.length === group.total ? group.total : `${group.requests.length} of ${group.total}`}
               </Badge>
             </Button>
             <div
@@ -177,7 +236,7 @@ export function ApprovalSections({ snapshot }: { snapshot: AppSnapshot }) {
                     ))}
                   </div>
                 ) : shouldRenderGroup ? (
-                  <p className="empty">{group.empty}</p>
+                  <p className="empty">{group.total ? "Nothing matches these filters." : group.empty}</p>
                 ) : null}
               </div>
             </div>
