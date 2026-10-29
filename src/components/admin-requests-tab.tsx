@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { bulkDecideAction } from "@/app/actions";
 import type { AppSnapshot, TimeOffRequest } from "@/src/lib/app-data";
+import { PTO_ALLOWANCE_HOURS } from "@/src/lib/pto";
 import { groupByPersonAndReason, requestMatches, type AdminFilters } from "@/src/lib/admin-workspace";
 import { addCivilDays, formatTimeRange12Hour, formatTimestampInLosAngeles, formatWeekdayDateLabel } from "@/src/lib/app-time";
 import { RECENT_WINDOW_DAYS, requestEventDates } from "@/src/lib/approval-groups";
 import { ActionForm } from "./action-form";
 import { AdminRequestCard } from "./admin-request-card";
+import { IconEdit } from "./icons";
+import { RequestForm } from "./request-form";
 import { DecisionControls } from "./decision-controls";
 import { DeleteRequestForm } from "./delete-request-form";
 import { PendingSubmitButton } from "./pending-submit-button";
@@ -24,6 +27,13 @@ type AdminRequestsTabProps = {
   view: RequestView;
   onViewChange: (view: RequestView) => void;
 };
+
+// PTO the employee has left this year. An approved PTO request being edited gets its own hours back.
+function ptoRemainingFor(snapshot: AppSnapshot, request: TimeOffRequest) {
+  const remaining = snapshot.balances[request.employeeId]?.remainingHours ?? PTO_ALLOWANCE_HOURS;
+  const own = request.status === "Approved" && request.requestType === "PTO" ? request.totalRequestedHours : 0;
+  return Number((remaining + own).toFixed(2));
+}
 
 export function AdminRequestsTab({ snapshot, filters, viewerId, today, view, onViewChange }: AdminRequestsTabProps) {
   const [showOlder, setShowOlder] = useState(false);
@@ -106,6 +116,7 @@ export function AdminRequestsTab({ snapshot, filters, viewerId, today, view, onV
                       key={request.id}
                       request={request}
                       isOwn={request.employeeId === viewerId}
+                      ptoRemaining={ptoRemainingFor(snapshot, request)}
                       checked={activeSelection.includes(request.id)}
                       onCheck={(on) => toggle([request.id], on)}
                     />
@@ -132,7 +143,7 @@ export function AdminRequestsTab({ snapshot, filters, viewerId, today, view, onV
           {decided.length ? (
             <div className="stack">
               {decided.map((request) => (
-                <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} viewerId={viewerId} />
+                <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} viewerId={viewerId} ptoRemaining={ptoRemainingFor(snapshot, request)} />
               ))}
             </div>
           ) : (
@@ -144,15 +155,34 @@ export function AdminRequestsTab({ snapshot, filters, viewerId, today, view, onV
   );
 }
 
-function PendingRow({ request, isOwn, checked, onCheck }: {
+function PendingRow({ request, isOwn, checked, onCheck, ptoRemaining }: {
   request: TimeOffRequest;
   isOwn: boolean;
   checked: boolean;
   onCheck: (on: boolean) => void;
+  ptoRemaining: number;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState("");
   const firstMakeup = request.makeupEntries[0];
+
+  if (editing) {
+    return (
+      <div className="pending-row-edit">
+        <RequestForm
+          mode="admin"
+          editRequest={request}
+          ptoRemaining={ptoRemaining}
+          onCancel={() => setEditing(false)}
+          onDone={(message) => { setEditing(false); setNotice(message); }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="pending-row">
+      {notice ? <p className="notice success pending-row-notice" role="status">{notice}</p> : null}
       {isOwn ? <span /> : (
         <label className="check-hit">
           <input type="checkbox" checked={checked} aria-label={`Select request for ${request.segments.map((s) => formatWeekdayDateLabel(s.date)).join(", ")}`} onChange={(event) => onCheck(event.target.checked)} />
@@ -195,7 +225,13 @@ function PendingRow({ request, isOwn, checked, onCheck }: {
             Submitted {formatTimestampInLosAngeles(request.submittedAt)}
             {request.editedAt ? ` · edited ${formatTimestampInLosAngeles(request.editedAt)}` : ""}
           </small>
-          <DeleteRequestForm requestId={request.id} />
+          <div className="pending-row-tools">
+            <button type="button" className="btn-ghost compact" onClick={() => { setNotice(""); setEditing(true); }}>
+              <IconEdit />
+              Edit
+            </button>
+            <DeleteRequestForm requestId={request.id} />
+          </div>
         </details>
       </div>
       <div className="pending-row-actions">

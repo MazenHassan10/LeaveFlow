@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
 import { formatCivilDate, losAngelesDate, losAngelesYear } from "./app-time";
 import { buildReportCalendarEvents } from "./report-calendar";
-import { sendNewRequestEmail, sendRequestDecisionEmail, type RequestEmailKind } from "./email";
+import { sendNewRequestEmail, sendRequestChangedEmail, sendRequestDecisionEmail, type RequestEmailKind } from "./email";
 import {
   AppRole,
   MakeupStatus,
@@ -631,7 +631,7 @@ function memoryRequestMatchesPayload(request: TimeOffRequest, payload: RequestPa
     })), payload.makeupEntries);
 }
 
-async function hasDuplicateRequest(client: Pick<Pool, "query">, actor: UserProfile, payload: RequestPayload, excludeRequestId?: string) {
+async function hasDuplicateRequest(client: Pick<Pool, "query">, employeeId: string, payload: RequestPayload, excludeRequestId?: string) {
   const candidates = await client.query(
     `select r.id
      from time_off_requests r
@@ -645,7 +645,7 @@ async function hasDuplicateRequest(client: Pick<Pool, "query">, actor: UserProfi
        and s.requested_hours = $7
        and r.status <> 'Cancelled'
        and ($8::uuid is null or r.id <> $8::uuid)`,
-    [actor.id, payload.requestType, payload.reason, payload.segmentDate, payload.segmentStart, payload.segmentEnd, payload.requestedHours, excludeRequestId ?? null]
+    [employeeId, payload.requestType, payload.reason, payload.segmentDate, payload.segmentStart, payload.segmentEnd, payload.requestedHours, excludeRequestId ?? null]
   );
 
   for (const candidate of candidates.rows) {
@@ -668,8 +668,8 @@ async function hasDuplicateRequest(client: Pick<Pool, "query">, actor: UserProfi
   return false;
 }
 
-async function lockDuplicatePayload(client: Pick<Pool, "query">, actor: UserProfile, payload: RequestPayload) {
-  const [firstKey, secondKey] = advisoryLockKeys(canonicalDuplicateKey(actor.id, payload));
+async function lockDuplicatePayload(client: Pick<Pool, "query">, employeeId: string, payload: RequestPayload) {
+  const [firstKey, secondKey] = advisoryLockKeys(canonicalDuplicateKey(employeeId, payload));
   await client.query("select pg_advisory_xact_lock($1::int, $2::int)", [firstKey, secondKey]);
 }
 
@@ -1004,8 +1004,8 @@ export async function createTimeOffRequest(actor: UserProfile, formData: FormDat
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await lockDuplicatePayload(client, actor, payload);
-    if (await hasDuplicateRequest(client, actor, payload)) {
+    await lockDuplicatePayload(client, actor.id, payload);
+    if (await hasDuplicateRequest(client, actor.id, payload)) {
       await client.query("commit");
       return { status: "duplicate" };
     }
@@ -1109,8 +1109,8 @@ export async function updatePendingRequest(actor: UserProfile, requestId: string
       const result = await client.query("select employee_id, status from time_off_requests where id = $1 for update", [requestId]);
       const row = result.rows[0];
       assertOwnPendingRequest(actor, row && { employeeId: row.employee_id, status: row.status }, "edit");
-      await lockDuplicatePayload(client, actor, payload);
-      if (await hasDuplicateRequest(client, actor, payload, requestId)) {
+      await lockDuplicatePayload(client, actor.id, payload);
+      if (await hasDuplicateRequest(client, actor.id, payload, requestId)) {
         await client.query("commit");
         return { status: "duplicate" };
       }
@@ -1140,6 +1140,150 @@ export async function updatePendingRequest(actor: UserProfile, requestId: string
   await audit(actor.email, "employee.request_updated", "time_off_request", requestId);
   await notifyAdminsOfSubmittedRequest(actor, requestId, "updated");
   return { status: "updated" };
+}
+
+export type AdminUpdateRequestResult = { status: "updated" | "duplicate"; notified: "employee" | "admins" | "none" };
+
+const makeupKey = (entry: { date: string; startTime: string; endTime: string }) => `${entry.date} ${entry.startTime} ${entry.endTime}`;
+
+// Admins and Managers can fix a pending or approved request in place. The status stays the same,
+// make-up shifts that didn't change keep their Worked / Not worked marks, and PTO balances follow.
+export async function adminUpdateRequest(actor: UserProfile, requestId: string, formData: FormData): Promise<AdminUpdateRequestResult> {
+  if (!isAdmin(actor)) throw new Error("Admin access required.");
+  const payload = parseRequestPayload(formData);
+  const note = normalizeDecisionNote("Approved", String(formData.get("note") ?? ""));
+  const { requestType, reason, requestedHours } = payload;
+  const makeupHours = payloadMakeupHours(payload);
+  const segmentYear = payloadYear(payload);
+
+  const before = await getRequestDetails(requestId);
+  if (!before) throw new Error("Request not found.");
+  assertEditableByAdmin(before.request.status);
+  const employeeId = before.request.employeeId;
+  const lateNotice = isLateNotice(losAngelesDate(new Date(before.request.submittedAt)), payload.segmentDate);
+
+  if (!pool) {
+    const request = memory.requests.find((item) => item.id === requestId)!;
+    assertEditableByAdmin(request.status);
+    const duplicate = memory.requests.some((item) =>
+      item.id !== requestId && item.employeeId === employeeId && memoryRequestMatchesPayload(item, payload)
+    );
+    if (duplicate) return { status: "duplicate", notified: "none" };
+    const wasApprovedPto = request.status === "Approved" && request.requestType === "PTO";
+    const oldYears = [...memoryPtoHoursByYear(request).keys()];
+    if (requestType === "PTO") {
+      const ownHours = wasApprovedPto ? memoryPtoHoursByYear(request).get(segmentYear) || 0 : 0;
+      const remaining = roundHours(memoryRemainingPto(employeeId, segmentYear) + ownHours);
+      if (requestedHours > remaining) throw new Error(insufficientPtoMessage(requestedHours, remaining, segmentYear));
+    }
+    const kept = new Map(request.makeupEntries.map((entry) => [makeupKey(entry), entry]));
+    const children = buildMemoryChildren(requestId, payload);
+    children.makeupEntries = children.makeupEntries.map((entry) => kept.get(makeupKey(entry)) ?? entry);
+    Object.assign(request, {
+      requestType,
+      reason,
+      totalRequestedHours: requestedHours,
+      totalMakeupHours: makeupHours,
+      isLateNotice: lateNotice,
+      requiresMakeupPlan: requestType !== "PTO",
+      editedAt: new Date().toISOString(),
+      ...children
+    });
+    if (request.status === "Approved") {
+      for (const year of new Set([...oldYears, segmentYear])) recalculateMemoryPtoBalance(employeeId, year);
+    }
+  } else {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const result = await client.query("select employee_id, status, request_type from time_off_requests where id = $1 for update", [requestId]);
+      const row = result.rows[0];
+      if (!row) throw new Error("Request not found.");
+      assertEditableByAdmin(row.status);
+      await lockDuplicatePayload(client, employeeId, payload);
+      if (await hasDuplicateRequest(client, employeeId, payload, requestId)) {
+        await client.query("commit");
+        return { status: "duplicate", notified: "none" };
+      }
+      const isApproved = row.status === "Approved";
+      const oldYears = await ptoHoursByYear(client, requestId);
+      if (requestType === "PTO") {
+        const ownHours = isApproved && row.request_type === "PTO"
+          ? oldYears.find((item) => Number(item.year) === segmentYear)?.hours || 0
+          : 0;
+        const remaining = roundHours(await remainingPto(client, employeeId, segmentYear) + ownHours);
+        if (requestedHours > remaining) throw new Error(insufficientPtoMessage(requestedHours, remaining, segmentYear));
+      }
+      await client.query(
+        `update time_off_requests
+         set request_type = $2, reason = $3, total_requested_hours = $4, total_makeup_hours = $5,
+             is_late_notice = $6, requires_makeup_plan = $7, edited_at = now()
+         where id = $1`,
+        [requestId, requestType, reason, requestedHours, makeupHours, lateNotice, requestType !== "PTO"]
+      );
+      await client.query("delete from time_off_request_segments where request_id = $1", [requestId]);
+      await client.query(
+        `insert into time_off_request_segments (request_id, request_date, start_time, end_time, requested_hours)
+         values ($1, $2, $3, $4, $5)`,
+        [requestId, payload.segmentDate, payload.segmentStart, payload.segmentEnd, payload.requestedHours]
+      );
+      // Keep make-up shifts that didn't change (and their verification); replace the rest.
+      const wanted = new Set(payload.makeupEntries.map(makeupKey));
+      const existing = new Set<string>();
+      for (const entry of before.request.makeupEntries) {
+        if (wanted.has(makeupKey(entry)) && !existing.has(makeupKey(entry))) existing.add(makeupKey(entry));
+        else await client.query("delete from makeup_plan_entries where id = $1", [entry.id]);
+      }
+      for (const entry of payload.makeupEntries) {
+        if (existing.delete(makeupKey(entry))) continue;
+        await client.query(
+          `insert into makeup_plan_entries (request_id, makeup_date, start_time, end_time, planned_hours)
+           values ($1, $2, $3, $4, $5)`,
+          [requestId, entry.date, entry.startTime, entry.endTime, entry.plannedHours]
+        );
+      }
+      if (isApproved) {
+        const years = new Set([...oldYears.map((item) => Number(item.year)), segmentYear]);
+        for (const year of years) {
+          await ensureBalanceRow(client, employeeId, year);
+          await recalculatePtoUsed(client, employeeId, year);
+        }
+      }
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  await audit(actor.email, "admin.request_updated", "time_off_request", requestId);
+  const notified = await notifyOfAdminEdit(actor, before.request, requestId, note);
+  return { status: "updated", notified };
+}
+
+function assertEditableByAdmin(status: RequestStatus) {
+  if (status !== "Pending" && status !== "Approved") throw new Error("Only pending or approved requests can be edited.");
+}
+
+// The employee hears about the change; if a Manager edited their own request, the other admins do.
+async function notifyOfAdminEdit(actor: UserProfile, before: TimeOffRequest, requestId: string, note: string | null) {
+  try {
+    const after = await getRequestDetails(requestId);
+    if (!after) return "none" as const;
+    if (after.employee.id !== actor.id) {
+      await sendRequestChangedEmail([after.employee], { employee: after.employee, before, after: after.request, editor: actor, note, audience: "employee" });
+      return "employee" as const;
+    }
+    const admins = (await getActiveAdminProfiles()).filter((admin) => admin.id !== actor.id);
+    if (!admins.length) return "none" as const;
+    await sendRequestChangedEmail(admins, { employee: after.employee, before, after: after.request, editor: actor, note, audience: "admins" });
+    return "admins" as const;
+  } catch (error) {
+    console.error("Failed to send request change notification", error);
+    return "none" as const;
+  }
 }
 
 const MAX_DECISION_NOTE_LENGTH = 500;

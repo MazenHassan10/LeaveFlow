@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { submitTimeOffRequest, updateTimeOffRequest, type SubmitRequestState } from "@/app/actions";
+import { adminUpdateRequestAction, submitTimeOffRequest, updateTimeOffRequest, type SubmitRequestState } from "@/app/actions";
 import type { TimeOffRequest } from "@/src/lib/app-data";
 import { formatPacificRangeIn } from "@/src/lib/app-time";
 import { calculateHours } from "@/src/lib/pto";
@@ -74,9 +74,20 @@ type RequestFormProps = {
   ptoRemaining: number;
   // When set, the form edits this pending request instead of creating a new one.
   editRequest?: TimeOffRequest | null;
+  // "admin": an Admin or Manager fixing someone's pending or approved request from the dashboard.
+  mode?: "employee" | "admin";
+  onCancel?: () => void;
+  onDone?: (message: string) => void;
 };
 
-export function RequestForm({ ptoRemaining, editRequest }: RequestFormProps) {
+// Adapts the admin action's { done | error } result to this form's state shape.
+async function adminSave(_previousState: SubmitRequestState, formData: FormData): Promise<SubmitRequestState> {
+  const result = await adminUpdateRequestAction({ status: "idle", message: "" }, formData);
+  return result.status === "done" ? { status: "updated", message: result.message } : { status: "error", message: result.message };
+}
+
+export function RequestForm({ ptoRemaining, editRequest, mode = "employee", onCancel, onDone }: RequestFormProps) {
+  const isAdmin = mode === "admin" && Boolean(editRequest);
   const router = useRouter();
   const editSegment = editRequest?.segments[0];
   const [requestType, setRequestType] = useState<string>(editRequest?.requestType ?? "PTO");
@@ -85,7 +96,7 @@ export function RequestForm({ ptoRemaining, editRequest }: RequestFormProps) {
     ? { preset: presetForTimes(editSegment.startTime, editSegment.endTime), startTime: editSegment.startTime, endTime: editSegment.endTime }
     : { preset: "custom", startTime: "", endTime: "" });
   const [makeupRows, setMakeupRows] = useState<MakeupRow[]>(() => initialMakeupRows(editRequest));
-  const [state, formAction] = useActionState(editRequest ? updateTimeOffRequest : submitTimeOffRequest, initialState);
+  const [state, formAction] = useActionState(isAdmin ? adminSave : editRequest ? updateTimeOffRequest : submitTimeOffRequest, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const previousRowCount = useRef(makeupRows.length);
 
@@ -96,8 +107,16 @@ export function RequestForm({ ptoRemaining, editRequest }: RequestFormProps) {
   const exceedsPto = requestType === "PTO" && requestedHours > ptoRemaining;
 
   useEffect(() => {
-    if (state.status === "updated") router.replace("/employee?updated=1");
-  }, [state.status, router]);
+    if (state.status !== "updated") return;
+    if (isAdmin) {
+      router.refresh();
+      onDone?.(state.message);
+    } else {
+      router.replace("/employee?updated=1");
+    }
+    // onDone is intentionally not a dependency: it should run once per result.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, router, isAdmin]);
 
   function addMakeupRow() {
     setMakeupRows((rows) => [
@@ -160,10 +179,12 @@ export function RequestForm({ ptoRemaining, editRequest }: RequestFormProps) {
   }, [makeupRows.length]);
 
   return (
-    <form action={formAction} className="panel form-panel" ref={formRef} id="request-form">
+    <form action={formAction} className={isAdmin ? "admin-edit-form" : "panel form-panel"} ref={formRef} id={isAdmin ? undefined : "request-form"}>
       <div className="split">
-        <h2>{editRequest ? "Edit request" : "New request"}</h2>
-        {editRequest ? <Link className="btn-ghost compact" href="/employee">Cancel editing</Link> : null}
+        {isAdmin ? <h3>Edit request</h3> : <h2>{editRequest ? "Edit request" : "New request"}</h2>}
+        {isAdmin
+          ? <button type="button" className="btn-ghost compact" onClick={onCancel}>Cancel</button>
+          : editRequest ? <Link className="btn-ghost compact" href="/employee">Cancel editing</Link> : null}
       </div>
       {editRequest ? <input type="hidden" name="requestId" value={editRequest.id} /> : null}
       <p className="form-hint">
@@ -226,8 +247,8 @@ export function RequestForm({ ptoRemaining, editRequest }: RequestFormProps) {
       {requestType === "PTO" ? (
         <p className={`notice ${exceedsPto ? "warning" : "info"}`} role={exceedsPto ? "alert" : undefined}>
           {exceedsPto
-            ? `This needs ${requestedHours}h of PTO but you only have ${ptoRemaining}h left. It will be refused.`
-            : `You have ${ptoRemaining}h of PTO left this year.`}
+            ? `This needs ${requestedHours}h of PTO but ${isAdmin ? "they" : "you"} only have ${ptoRemaining}h left. It will be refused.`
+            : `${isAdmin ? "They have" : "You have"} ${ptoRemaining}h of PTO left this year${isAdmin && editRequest?.status === "Approved" && editRequest.requestType === "PTO" ? ", counting this request's own hours" : ""}.`}
         </p>
       ) : null}
       <div className="split">
@@ -307,6 +328,12 @@ export function RequestForm({ ptoRemaining, editRequest }: RequestFormProps) {
           Make-up planned: <strong>{makeupHours}h</strong> of <strong>{requestedHours}h</strong> needed
           {makeupCovered ? " ✓" : ` (add ${roundHours(requestedHours - makeupHours)}h more)`}
         </p>
+      ) : null}
+      {isAdmin ? (
+        <label>
+          Note for the email (optional)
+          <textarea name="note" maxLength={500} rows={2} placeholder="Fixed the date to match what we agreed on the phone." />
+        </label>
       ) : null}
       <PendingSubmitButton pendingLabel={editRequest ? "Saving..." : "Submitting..."}>
         {editRequest ? "Save changes" : "Submit request"}

@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/src/lib/auth";
 import {
+  adminUpdateRequest,
   cancelRequest,
   createTimeOffRequest,
   deleteProfile,
@@ -142,6 +143,17 @@ export async function setRequestStatusAction(_previousState: ActionState, formDa
       formData.has("note") ? String(formData.get("note")) : null
     );
     return status === "Approved" ? "Approved." : "Rejected.";
+  }, "The request could not be updated.");
+}
+
+// Admins and Managers fix a pending or approved request in place.
+export async function adminUpdateRequestAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const result = await adminUpdateRequest(await currentProfile(), String(formData.get("requestId")), formData);
+    if (result.status === "duplicate") throw new Error("This person already has a request with exactly these details.");
+    if (result.notified === "employee") return "Request updated. The employee was emailed the changes.";
+    if (result.notified === "admins") return "Request updated. The other admins were emailed the changes.";
+    return "Request updated.";
   }, "The request could not be updated.");
 }
 

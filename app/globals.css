@@ -3489,8 +3489,23 @@ nav a:hover .nav-icon {
   border-top: 1px solid var(--line-subtle);
 }
 
-.request-card-footer > form:last-child {
+.request-card-footer > form:last-child,
+.request-card-footer > .request-card-footer-actions {
   margin-left: auto;
+}
+
+/* Edit + Delete sit together at the end of the footer. */
+.request-card-footer-actions,
+.pending-row-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.request-card-footer-actions button,
+.pending-row-tools button {
+  width: auto;
 }
 
 .request-card-footer .btn-danger {
@@ -3629,4 +3644,50 @@ nav a:hover .nav-icon {
     width: 22px;
     height: 22px;
   }
+}
+
+
+/* ===== Admin edit of a pending or approved request (inline form) ===== */
+.admin-edit-form {
+  container: request-form / inline-size;
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.admin-edit-form h3 {
+  margin: 0;
+}
+
+.request-card.is-editing {
+  grid-template-columns: minmax(0, 1fr);
+  border-color: rgba(0, 194, 255, 0.45);
+}
+
+.request-card.is-editing:hover {
+  transform: none;
+}
+
+.request-card > .notice {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.pending-row-edit {
+  padding: var(--space-4);
+  border-top: 1px solid var(--line-subtle);
+  background: var(--surface);
+}
+
+.pending-row > .pending-row-notice {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.admin-edit-form > .split {
+  flex-wrap: nowrap;
+}
+
+.admin-edit-form > .split > button {
+  width: auto;
 }

@@ -6,6 +6,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "admin.request_approved": "Approved a request",
   "admin.request_rejected": "Rejected a request",
   "admin.request_deleted": "Deleted a request",
+  "admin.request_updated": "Edited a request",
   "admin.makeup_worked": "Marked a make-up shift as worked",
   "admin.makeup_not_worked": "Marked a make-up shift as not worked",
   "admin.makeup_pending": "Reset a make-up shift to pending",

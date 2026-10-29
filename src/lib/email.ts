@@ -426,6 +426,95 @@ export function buildRequestDecisionEmail(employee: UserProfile, request: TimeOf
   };
 }
 
+export type RequestChangedEmailInput = {
+  employee: UserProfile;
+  before: TimeOffRequest;
+  after: TimeOffRequest;
+  editor: UserProfile;
+  note?: string | null;
+  // "employee": tell the employee an admin changed their request.
+  // "admins": a Manager changed their own request; tell the other admins.
+  audience: "employee" | "admins";
+};
+
+function timeOffLine(request: TimeOffRequest) {
+  return request.segments
+    .map((segment) => `${formatWeekdayDateLabel(segment.date)}, ${formatTimeRange12Hour(segment.startTime, segment.endTime)} PT (${segment.requestedHours}h)`)
+    .join("; ") || "None";
+}
+
+function makeupLine(request: TimeOffRequest) {
+  return request.makeupEntries
+    .map((entry) => `${formatWeekdayDateLabel(entry.date)}, ${formatTimeRange12Hour(entry.startTime, entry.endTime)} PT (${entry.plannedHours}h)`)
+    .join("; ") || "None";
+}
+
+// Only the parts that actually changed, as [what, before, after].
+export function requestChanges(before: TimeOffRequest, after: TimeOffRequest) {
+  const rows: Array<{ label: string; before: string; after: string }> = [
+    { label: "Type", before: before.requestType, after: after.requestType },
+    { label: "Time off", before: timeOffLine(before), after: timeOffLine(after) },
+    { label: "Make-up shifts", before: makeupLine(before), after: makeupLine(after) },
+    { label: "Reason", before: before.reason?.trim() || "None", after: after.reason?.trim() || "None" },
+  ];
+  return rows.filter((row) => row.before !== row.after);
+}
+
+export function buildRequestChangedEmail(recipients: UserProfile[], input: RequestChangedEmailInput): EmailMessage | null {
+  const to = recipients.map((recipient) => recipient.email).filter(Boolean);
+  if (!to.length) return null;
+  const { employee, before, after, editor, audience } = input;
+  const note = input.note?.trim();
+  const changes = requestChanges(before, after);
+  const approved = after.status === "Approved";
+  const statusLine = approved ? "It is still approved." : "It is still waiting for a decision.";
+  const forEmployee = audience === "employee";
+  const url = appUrl(forEmployee ? "/employee" : "/admin");
+  const intro = forEmployee
+    ? `${editor.fullName} updated your ${after.requestType} request. ${statusLine}`
+    : `${editor.fullName} updated their own ${approved ? "approved" : "pending"} ${after.requestType} request.`;
+  const subject = forEmployee
+    ? "Your time-off request was updated"
+    : `${editor.fullName} updated their own time-off request`;
+
+  const text = [
+    intro,
+    "",
+    ...(changes.length
+      ? changes.flatMap((change) => [`${change.label}`, `  Before: ${change.before}`, `  After:  ${change.after}`])
+      : ["No details changed."]),
+    ...(note ? ["", `Note from ${editor.fullName}:`, note] : []),
+    "",
+    `${forEmployee ? "View your requests" : "Open the admin dashboard"}: ${url}`,
+  ].join("\n");
+
+  const html = renderEmailLayout({
+    eyebrow: "Request update",
+    title: "Request updated",
+    greeting: forEmployee ? `Hi ${employee.fullName},` : undefined,
+    intro,
+    badge: after.status,
+    badgeTone: approved ? "success" : "info",
+    body: [
+      renderSection("What changed", renderDataTable(
+        [
+          { label: "", value: (row) => row.label, width: "22%" },
+          { label: "Before", value: (row) => row.before },
+          { label: "After", value: (row) => row.after },
+        ],
+        changes,
+        "No details changed."
+      )),
+      note ? renderSection(`Note from ${editor.fullName}`, renderReason(note)) : "",
+      renderSection("Time off now", requestedTimeTable(after)),
+      after.makeupEntries.length ? renderSection("Make-up plan now", makeupPlanTable(after)) : "",
+      renderCta(forEmployee ? "View my requests" : "Open admin dashboard", url),
+    ].join(""),
+  });
+
+  return { to, subject, text, html };
+}
+
 function reminderWhen(date: string, daysAhead: number) {
   const label = formatWeekdayDateLabel(date);
   return daysAhead === 1 ? `tomorrow (${label})` : `in ${daysAhead} days (${label})`;
@@ -624,6 +713,12 @@ export async function sendNewRequestEmail(
 
 export async function sendRequestDecisionEmail(employee: UserProfile, request: TimeOffRequest, approverName?: string) {
   return sendEmail(buildRequestDecisionEmail(employee, request, approverName));
+}
+
+export async function sendRequestChangedEmail(recipients: UserProfile[], input: RequestChangedEmailInput) {
+  const message = buildRequestChangedEmail(recipients, input);
+  if (!message) return { sent: false, skipped: true, reason: "no-recipients" };
+  return sendEmail(message);
 }
 
 export async function sendDayBeforeReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[]) {
