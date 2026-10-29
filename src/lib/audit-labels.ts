@@ -2,6 +2,7 @@
 const AUDIT_ACTION_LABELS: Record<string, string> = {
   "admin.profile_deleted": "Deleted a user",
   "admin.profile_updated": "Updated a user's name, role or status",
+  "admin.profile_email_changed": "Changed a user's sign-in email",
   "admin.pto_allowance_updated": "Changed a PTO allowance",
   "admin.request_approved": "Approved a request",
   "admin.request_rejected": "Rejected a request",

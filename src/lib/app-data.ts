@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
 import { formatCivilDate, losAngelesDate, losAngelesYear } from "./app-time";
 import { buildReportCalendarEvents } from "./report-calendar";
-import { sendNewRequestEmail, sendRequestChangedEmail, sendRequestDecisionEmail, type RequestEmailKind } from "./email";
+import { sendNewRequestEmail, sendRequestChangedEmail, sendRequestDecisionEmail, sendSignInEmailChangedEmail, type RequestEmailKind } from "./email";
 import {
   AppRole,
   MakeupStatus,
@@ -766,6 +766,113 @@ export async function deleteProfile(actor: UserProfile, id: string) {
     throw error;
   } finally {
     client.release();
+  }
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function normalizeEmail(value: string) {
+  const email = value.trim().toLowerCase();
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) throw new Error("Enter a valid email address.");
+  return email;
+}
+
+export type ChangeEmailResult = { oldEmail: string; newEmail: string; removedEmptyProfile: boolean };
+
+// Moves a person's whole profile (requests, make-ups, PTO, history) to a new Google sign-in email.
+// The old Google account is signed out and unlinked. If the person already signed in with the new
+// email, the empty profile that created is removed; a profile with requests is never removed.
+export async function changeProfileEmail(actor: UserProfile, id: string, newEmailInput: string): Promise<ChangeEmailResult> {
+  if (!isAdmin(actor)) throw new Error("Admin access required.");
+  if (actor.id === id) throw new Error("Another admin needs to change your own sign-in email.");
+  const newEmail = normalizeEmail(newEmailInput);
+
+  if (!pool) {
+    const target = memory.profiles.find((item) => item.id === id);
+    if (!target || target.protectedOwner) throw new Error("User not found.");
+    const oldEmail = target.email;
+    if (oldEmail.toLowerCase() === newEmail) throw new Error("That is already their sign-in email.");
+    const other = memory.profiles.find((item) => item.id !== id && item.email.toLowerCase() === newEmail);
+    if (other) assertRemovableDuplicate(other, actor, memory.requests.filter((request) => request.employeeId === other.id).length);
+    if (other) {
+      memory.profiles = memory.profiles.filter((item) => item.id !== other.id);
+      delete memory.balances[other.id];
+    }
+    target.email = newEmail;
+    target.authUserId = other?.authUserId ?? "";
+    await audit(actor.email, "admin.profile_email_changed", "user_profile", id);
+    await notifyOfEmailChange(id, oldEmail, newEmail, actor);
+    return { oldEmail, newEmail, removedEmptyProfile: Boolean(other) };
+  }
+
+  const client = await pool.connect();
+  let result: ChangeEmailResult;
+  try {
+    await client.query("begin");
+    const targetRows = await client.query(
+      "select id, email, auth_user_id, protected_owner from user_profiles where id = $1 for update",
+      [id]
+    );
+    const target = targetRows.rows[0];
+    if (!target || target.protected_owner) throw new Error("User not found.");
+    const oldEmail = String(target.email);
+    if (oldEmail.toLowerCase() === newEmail) throw new Error("That is already their sign-in email.");
+
+    const otherRows = await client.query(
+      `select p.*, (select count(*)::int from time_off_requests r where r.employee_id = p.id) as request_count
+       from user_profiles p where lower(p.email) = $1 and p.id <> $2 for update`,
+      [newEmail, id]
+    );
+    const other = otherRows.rows[0];
+    let newAuthUserId: string | null = null;
+    if (other) {
+      assertRemovableDuplicate(mapProfile(other), actor, Number(other.request_count));
+      // Keep the new Google login itself; only its empty profile goes. Their next page load lands on this profile.
+      newAuthUserId = other.auth_user_id ?? null;
+      await client.query("update user_profiles set role_assigned_by = null where role_assigned_by = $1", [other.id]);
+      await client.query("delete from user_profiles where id = $1", [other.id]);
+    }
+
+    await client.query(
+      "update user_profiles set email = $2, auth_user_id = $3, updated_at = now() where id = $1",
+      [id, newEmail, newAuthUserId]
+    );
+    // Sign out and unlink the old Google account (cascades its sessions and linked account rows).
+    if (target.auth_user_id) {
+      await client.query('delete from "user" where id = $1', [target.auth_user_id]);
+    }
+    await client.query("commit");
+    result = { oldEmail, newEmail, removedEmptyProfile: Boolean(other) };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await audit(actor.email, "admin.profile_email_changed", "user_profile", id);
+  await notifyOfEmailChange(id, result.oldEmail, result.newEmail, actor);
+  return result;
+}
+
+async function notifyOfEmailChange(id: string, oldEmail: string, newEmail: string, admin: UserProfile) {
+  try {
+    const profile = pool
+      ? (await pool.query("select * from user_profiles where id = $1", [id])).rows.map(mapProfile)[0]
+      : memory.profiles.find((item) => item.id === id);
+    if (profile) await sendSignInEmailChangedEmail(profile, oldEmail, newEmail, admin);
+  } catch (error) {
+    console.error("Failed to send sign-in email change notification", error);
+  }
+}
+
+function assertRemovableDuplicate(other: UserProfile, actor: UserProfile, requestCount: number) {
+  if (other.protectedOwner || other.id === actor.id || requestCount > 0) {
+    throw new Error(
+      `${other.fullName} (${other.email}) already uses that email` +
+      (requestCount > 0 ? ` and has ${requestCount} request${requestCount === 1 ? "" : "s"}.` : ".") +
+      " Pick a different email, or delete that user first."
+    );
   }
 }
 

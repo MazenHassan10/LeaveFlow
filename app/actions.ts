@@ -6,6 +6,7 @@ import { auth } from "@/src/lib/auth";
 import {
   adminUpdateRequest,
   cancelRequest,
+  changeProfileEmail,
   createTimeOffRequest,
   deleteProfile,
   deleteRequest,
@@ -100,6 +101,15 @@ export async function cancelRequestAction(_previousState: ActionState, formData:
     await cancelRequest(await currentProfile(), String(formData.get("requestId")));
     return "Request cancelled.";
   }, "The request could not be cancelled.");
+}
+
+export async function changeProfileEmailAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const result = await changeProfileEmail(await currentProfile(), String(formData.get("profileId")), String(formData.get("newEmail") ?? ""));
+    return `Sign-in email changed to ${result.newEmail}.` +
+      (result.removedEmptyProfile ? " The empty profile that email had created was removed." : "") +
+      " Both addresses were emailed.";
+  }, "The sign-in email could not be changed.");
 }
 
 export async function updateUserProfileAction(_previousState: ActionState, formData: FormData): Promise<ActionState> {

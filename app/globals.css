@@ -3691,3 +3691,69 @@ nav a:hover .nav-icon {
 .admin-edit-form > .split > button {
   width: auto;
 }
+
+
+/* ===== People: change a person's Google sign-in email ===== */
+.text-button {
+  justify-self: start;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--color-primary-600);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.text-button:hover {
+  background: none;
+  color: var(--color-primary-700);
+  transform: none;
+}
+
+.person-email-change {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-top: 1px dashed var(--line-subtle);
+  background: var(--surface-sunken);
+}
+
+.person-email-change form {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 520px;
+}
+
+.person-email-change input {
+  width: 100%;
+}
+
+.person-email-change .form-hint {
+  margin: 0;
+}
+
+.person-email-change-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.person-email-change-actions button {
+  width: auto;
+}
+
+.people-table > .person-notice {
+  margin: var(--space-2) var(--space-4) 0;
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .text-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

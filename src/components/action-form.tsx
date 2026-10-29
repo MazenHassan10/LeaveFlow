@@ -14,7 +14,7 @@ type ActionFormProps = {
   // Asked before submitting; the submission is cancelled if the user declines.
   confirmMessage?: string;
   // Called after a successful submission (e.g. to leave edit mode).
-  onDone?: () => void;
+  onDone?: (message: string) => void;
 };
 
 // A form for a server action that returns { status, message }: shows refusals inline instead of
@@ -25,7 +25,7 @@ export function ActionForm({ action, children, className, id, confirmMessage, on
 
   useEffect(() => {
     if (state.status === "done" || state.changed) router.refresh();
-    if (state.status === "done") onDone?.();
+    if (state.status === "done") onDone?.(state.message);
     // onDone is intentionally not a dependency: it should run once per result, not when its identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, router]);

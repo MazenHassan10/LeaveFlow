@@ -515,6 +515,42 @@ export function buildRequestChangedEmail(recipients: UserProfile[], input: Reque
   return { to, subject, text, html };
 }
 
+// Sent to both the old and the new address, so a change nobody asked for gets noticed.
+export function buildSignInEmailChangedEmail(person: UserProfile, oldEmail: string, newEmail: string, admin: UserProfile): EmailMessage {
+  const url = appUrl("/");
+  const intro = `${admin.fullName} changed the Google account you use to sign in to LeaveFlow. Your requests, make-up shifts and PTO balance stay the same.`;
+  const text = [
+    `Hi ${person.fullName},`,
+    "",
+    intro,
+    "",
+    `Old sign-in email: ${oldEmail}`,
+    `New sign-in email: ${newEmail}`,
+    "",
+    `From now on, sign in with Google using ${newEmail}.`,
+    `If you didn't ask for this, reply to your admin right away.`,
+    "",
+    `Sign in here: ${url}`,
+  ].join("\n");
+  const html = renderEmailLayout({
+    eyebrow: "Account update",
+    title: "Sign-in email changed",
+    greeting: `Hi ${person.fullName},`,
+    intro,
+    badge: "Account",
+    body: [
+      renderSection("Your sign-in", renderDetailsTable([
+        ["Old sign-in email", oldEmail],
+        ["New sign-in email", newEmail],
+        ["Changed by", admin.fullName],
+      ])),
+      renderSection("What to do", renderReason(`Sign in with Google using ${newEmail}. If you didn't ask for this, contact your admin right away.`)),
+      renderCta("Sign in to LeaveFlow", url),
+    ].join(""),
+  });
+  return { to: [...new Set([oldEmail, newEmail])], subject: "Your LeaveFlow sign-in email was changed", text, html };
+}
+
 function reminderWhen(date: string, daysAhead: number) {
   const label = formatWeekdayDateLabel(date);
   return daysAhead === 1 ? `tomorrow (${label})` : `in ${daysAhead} days (${label})`;
@@ -719,6 +755,10 @@ export async function sendRequestChangedEmail(recipients: UserProfile[], input: 
   const message = buildRequestChangedEmail(recipients, input);
   if (!message) return { sent: false, skipped: true, reason: "no-recipients" };
   return sendEmail(message);
+}
+
+export async function sendSignInEmailChangedEmail(person: UserProfile, oldEmail: string, newEmail: string, admin: UserProfile) {
+  return sendEmail(buildSignInEmailChangedEmail(person, oldEmail, newEmail, admin));
 }
 
 export async function sendDayBeforeReminderEmail(admin: UserProfile, date: string, events: ReportCalendarEvent[]) {
