@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type KeyboardEvent, type ReactNode } from "react";
-import type { AppSnapshot } from "@/src/lib/app-data";
+import { useState, type KeyboardEvent } from "react";
+import type { AppSnapshot, AuditEvent } from "@/src/lib/app-data";
 import { addMonths, buildReportCalendarEvents, buildShortNames, monthLabel } from "@/src/lib/report-calendar";
 import { buildMonthSummary, monthPeople } from "@/src/lib/report-summary";
 import { REPORT_VIEWS, type ReportView } from "@/src/lib/report-views";
 import { DropdownField } from "./dropdown-field";
 import { IconChevronLeft } from "./icons";
+import { ReportActivityTab } from "./report-activity-tab";
 import { ReportCalendar } from "./report-calendar";
 import { ReportMakeupTab } from "./report-makeup-tab";
 import { ReportPeopleTab } from "./report-people-tab";
@@ -26,11 +27,11 @@ type ReportsWorkspaceProps = {
   today: string;
   initialView: ReportView;
   initialPerson: string;
-  // Activity is rendered on the server and passed in.
-  activityTab: ReactNode;
+  // Audit events for this month, loaded on the server.
+  activity: AuditEvent[];
 };
 
-export function ReportsWorkspace({ snapshot, month, thisMonth, today, initialView, initialPerson, activityTab }: ReportsWorkspaceProps) {
+export function ReportsWorkspace({ snapshot, month, thisMonth, today, initialView, initialPerson, activity }: ReportsWorkspaceProps) {
   const [view, setView] = useState<ReportView>(initialView);
   const [person, setPerson] = useState(initialPerson);
 
@@ -164,7 +165,7 @@ export function ReportsWorkspace({ snapshot, month, thisMonth, today, initialVie
         {view === "calendar" ? <ReportCalendar month={month} today={today} events={events} shortNames={shortNames} /> : null}
         {view === "people" ? <ReportPeopleTab rows={rows} snapshot={snapshot} month={month} monthName={monthName} /> : null}
         {view === "makeup" ? <ReportMakeupTab rows={rows} today={today} monthName={monthName} /> : null}
-        {view === "activity" ? activityTab : null}
+        {view === "activity" ? <ReportActivityTab events={activity} snapshot={snapshot} personId={personId} monthName={monthName} /> : null}
       </div>
     </div>
   );

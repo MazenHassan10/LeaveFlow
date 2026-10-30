@@ -87,7 +87,12 @@ export type AuditEvent = {
   targetType: string;
   targetId: string | null;
   createdAt: string;
+  // Extra facts kept with the event (old and new values, who it was about) so the log still
+  // reads well after the record itself is changed or deleted.
+  metadata?: AuditMetadata | null;
 };
+
+export type AuditMetadata = Record<string, string | number | null>;
 
 export type AppSnapshot = {
   profiles: UserProfile[];
@@ -268,15 +273,67 @@ function cloneMemorySnapshot(filter?: { employeeId?: string; includeAudit?: bool
   };
 }
 
-async function audit(actorEmail: string, action: string, targetType: string, targetId: string | null) {
+async function audit(actorEmail: string, action: string, targetType: string, targetId: string | null, metadata?: AuditMetadata | null) {
+  const details = metadata && Object.keys(metadata).length ? metadata : null;
   if (!pool) {
-    memory.auditEvents.unshift({ id: uuid(), actorEmail, action, targetType, targetId, createdAt: new Date().toISOString() });
+    memory.auditEvents.unshift({ id: uuid(), actorEmail, action, targetType, targetId, createdAt: new Date().toISOString(), metadata: details });
     return;
   }
   await pool.query(
-    "insert into audit_events (actor_email, action, target_type, target_id) values ($1, $2, $3, $4)",
-    [actorEmail, action, targetType, targetId]
+    // metadata is NOT NULL in the schema (default '{}'), so events without details store an empty object.
+    "insert into audit_events (actor_email, action, target_type, target_id, metadata) values ($1, $2, $3, $4, $5::jsonb)",
+    [actorEmail, action, targetType, targetId, JSON.stringify(details ?? {})]
   );
+}
+
+function mapAuditEvent(row: Record<string, any>): AuditEvent {
+  return {
+    id: row.id,
+    actorEmail: row.actor_email,
+    action: row.action,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    createdAt: row.created_at?.toISOString?.() || row.created_at,
+    metadata: row.metadata ?? null
+  };
+}
+
+// Every audit event whose time falls in the given Pacific month (YYYY-MM), newest first.
+export async function getAuditEventsForMonth(month: string, limit = 1000): Promise<AuditEvent[]> {
+  if (!/^\d{4}-\d{2}$/.test(month)) return [];
+  if (!pool) {
+    return memory.auditEvents
+      .filter((event) => losAngelesDate(new Date(event.createdAt)).startsWith(month))
+      .slice(0, limit)
+      .map((event) => structuredClone(event));
+  }
+  const [year, monthNumber] = month.split("-").map(Number);
+  const next = monthNumber === 12 ? `${year + 1}-01` : `${year}-${String(monthNumber + 1).padStart(2, "0")}`;
+  const result = await pool.query(
+    `select * from audit_events
+     where created_at >= ($1::timestamp at time zone 'America/Los_Angeles')
+       and created_at < ($2::timestamp at time zone 'America/Los_Angeles')
+     order by created_at desc
+     limit $3`,
+    [`${month}-01 00:00:00`, `${next}-01 00:00:00`, limit]
+  );
+  return result.rows.map(mapAuditEvent);
+}
+
+// "Thu, Nov 12" (or "Thu, Nov 12 + 1 more") and the person, for audit details.
+function requestAuditSubject(request: Pick<TimeOffRequest, "segments">, employeeName?: string): AuditMetadata {
+  const dates = request.segments.map((segment) => segment.date).sort();
+  return {
+    employee: employeeName ?? null,
+    date: dates[0] ?? null,
+    extraDays: dates.length > 1 ? dates.length - 1 : null,
+  };
+}
+
+function scheduleText(request: Pick<TimeOffRequest, "segments">) {
+  return request.segments
+    .map((segment) => `${segment.date} ${segment.startTime}-${segment.endTime}`)
+    .join(", ");
 }
 
 export async function ensureProfile(user: AuthUser): Promise<UserProfile> {
@@ -347,14 +404,7 @@ export async function getSnapshot(): Promise<AppSnapshot> {
     profiles: profiles.rows.map(mapProfile),
     balances: balanceMap,
     requests: mapRequestRows(requests.rows, segments.rows, makeupEntries.rows),
-    auditEvents: auditEvents.rows.map((row) => ({
-      id: row.id,
-      actorEmail: row.actor_email,
-      action: row.action,
-      targetType: row.target_type,
-      targetId: row.target_id,
-      createdAt: row.created_at?.toISOString?.() || row.created_at
-    }))
+    auditEvents: auditEvents.rows.map(mapAuditEvent)
   };
 }
 
@@ -703,7 +753,7 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
         expiresOn: yearEnd(calendarYear)
       };
     }
-    await audit(actor.email, "admin.profile_updated", "user_profile", id);
+    await audit(actor.email, "admin.profile_updated", "user_profile", id, { name: profile.fullName, role, status });
     return;
   }
   await pool.query(
@@ -717,7 +767,7 @@ export async function updateProfile(actor: UserProfile, id: string, role: AppRol
   if (roleTracksPto(role)) {
     await ensureBalanceRow(pool, id, currentBalanceYear());
   }
-  await audit(actor.email, "admin.profile_updated", "user_profile", id);
+  await audit(actor.email, "admin.profile_updated", "user_profile", id, { name: name ?? null, role, status });
 }
 
 export async function deleteProfile(actor: UserProfile, id: string) {
@@ -728,11 +778,11 @@ export async function deleteProfile(actor: UserProfile, id: string) {
     const profileIndex = memory.profiles.findIndex((item) => item.id === id);
     if (profileIndex === -1 || memory.profiles[profileIndex].protectedOwner) return;
 
-    memory.profiles.splice(profileIndex, 1);
+    const [removed] = memory.profiles.splice(profileIndex, 1);
     delete memory.balances[id];
     memory.requests = memory.requests.filter((request) => request.employeeId !== id);
 
-    await audit(actor.email, "admin.profile_deleted", "user_profile", id);
+    await audit(actor.email, "admin.profile_deleted", "user_profile", id, { name: removed.fullName, email: removed.email });
     return;
   }
 
@@ -740,7 +790,7 @@ export async function deleteProfile(actor: UserProfile, id: string) {
   try {
     await client.query("begin");
     const target = await client.query(
-      "select auth_user_id from user_profiles where id = $1 and protected_owner = false for update",
+      "select auth_user_id, full_name, email from user_profiles where id = $1 and protected_owner = false for update",
       [id]
     );
     if (target.rows.length === 0) {
@@ -760,7 +810,7 @@ export async function deleteProfile(actor: UserProfile, id: string) {
     }
 
     await client.query("commit");
-    await audit(actor.email, "admin.profile_deleted", "user_profile", id);
+    await audit(actor.email, "admin.profile_deleted", "user_profile", id, { name: target.rows[0].full_name, email: target.rows[0].email });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -800,7 +850,7 @@ export async function changeProfileEmail(actor: UserProfile, id: string, newEmai
     }
     target.email = newEmail;
     target.authUserId = other?.authUserId ?? "";
-    await audit(actor.email, "admin.profile_email_changed", "user_profile", id);
+    await audit(actor.email, "admin.profile_email_changed", "user_profile", id, { from: oldEmail, to: newEmail });
     await notifyOfEmailChange(id, oldEmail, newEmail, actor);
     return { oldEmail, newEmail, removedEmptyProfile: Boolean(other) };
   }
@@ -850,7 +900,7 @@ export async function changeProfileEmail(actor: UserProfile, id: string, newEmai
     client.release();
   }
 
-  await audit(actor.email, "admin.profile_email_changed", "user_profile", id);
+  await audit(actor.email, "admin.profile_email_changed", "user_profile", id, { from: result.oldEmail, to: result.newEmail });
   await notifyOfEmailChange(id, result.oldEmail, result.newEmail, actor);
   return result;
 }
@@ -977,6 +1027,7 @@ export async function updatePtoAllowance(actor: UserProfile, employeeId: string,
     const profile = memory.profiles.find((item) => item.id === employeeId);
     if (!profile) throw new Error("Employee profile not found.");
 
+    const previousAllowance = memory.balances[employeeId]?.annualAllowanceHours ?? null;
     const balance = memory.balances[employeeId] || {
       employeeId,
       calendarYear,
@@ -995,12 +1046,16 @@ export async function updatePtoAllowance(actor: UserProfile, employeeId: string,
     };
     recalculateMemoryPtoBalance(employeeId, calendarYear);
 
-    await audit(actor.email, "admin.pto_allowance_updated", "pto_balance", employeeId);
+    await audit(actor.email, "admin.pto_allowance_updated", "pto_balance", employeeId, { from: previousAllowance, to: allowance, year: calendarYear });
     return;
   }
 
   const profile = await pool.query("select id from user_profiles where id = $1", [employeeId]);
   if (!profile.rows[0]) throw new Error("Employee profile not found.");
+  const previous = await pool.query(
+    "select annual_allowance_hours::float as allowance from pto_balances where employee_id = $1 and calendar_year = $2",
+    [employeeId, calendarYear]
+  );
 
   await pool.query(
     `insert into pto_balances (employee_id, calendar_year, annual_allowance_hours, used_hours, expires_on)
@@ -1010,7 +1065,9 @@ export async function updatePtoAllowance(actor: UserProfile, employeeId: string,
     [employeeId, calendarYear, allowance, yearEnd(calendarYear)]
   );
 
-  await audit(actor.email, "admin.pto_allowance_updated", "pto_balance", employeeId);
+  await audit(actor.email, "admin.pto_allowance_updated", "pto_balance", employeeId, {
+    from: previous.rows[0]?.allowance ?? null, to: allowance, year: calendarYear
+  });
 }
 
 function roundHours(value: number) {
@@ -1365,7 +1422,14 @@ export async function adminUpdateRequest(actor: UserProfile, requestId: string, 
     }
   }
 
-  await audit(actor.email, "admin.request_updated", "time_off_request", requestId);
+  const newSchedule = `${payload.segmentDate} ${payload.segmentStart}-${payload.segmentEnd}`;
+  const oldSchedule = scheduleText(before.request);
+  await audit(actor.email, "admin.request_updated", "time_off_request", requestId, {
+    ...requestAuditSubject(before.request, before.employee.fullName),
+    from: oldSchedule !== newSchedule ? oldSchedule : null,
+    to: oldSchedule !== newSchedule ? newSchedule : null,
+    note,
+  });
   const notified = await notifyOfAdminEdit(actor, before.request, requestId, note);
   return { status: "updated", notified };
 }
@@ -1437,7 +1501,7 @@ export async function setRequestStatus(
       };
       recalculateMemoryPtoBalance(request.employeeId, year);
     }
-    await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
+    await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId, { note: decisionNote ?? null });
     await notifyEmployeeOfRequestDecision(requestId, actor.fullName);
     return;
   }
@@ -1475,7 +1539,7 @@ export async function setRequestStatus(
       await recalculatePtoUsed(client, employeeId, year);
     }
     await client.query("commit");
-    await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId);
+    await audit(actor.email, `admin.request_${status.toLowerCase()}`, "time_off_request", requestId, { note: decisionNote ?? null });
     await notifyEmployeeOfRequestDecision(requestId, actor.fullName);
   } catch (error) {
     await client.query("rollback");
@@ -1518,6 +1582,11 @@ function recalculateMemoryPtoBalance(employeeId: string, calendarYear: number) {
 
 export async function deleteRequest(actor: UserProfile, requestId: string) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
+  // Remember who and when, so the activity log can still say what was deleted.
+  const details = await getRequestDetails(requestId);
+  const deletedMeta: AuditMetadata | null = details
+    ? { ...requestAuditSubject(details.request, details.employee.fullName), status: details.request.status }
+    : null;
 
   if (!pool) {
     const requestIndex = memory.requests.findIndex((request) => request.id === requestId);
@@ -1528,7 +1597,7 @@ export async function deleteRequest(actor: UserProfile, requestId: string) {
       for (const year of memoryPtoHoursByYear(request).keys()) recalculateMemoryPtoBalance(request.employeeId, year);
     }
 
-    await audit(actor.email, "admin.request_deleted", "time_off_request", requestId);
+    await audit(actor.email, "admin.request_deleted", "time_off_request", requestId, deletedMeta);
     return;
   }
 
@@ -1553,7 +1622,7 @@ export async function deleteRequest(actor: UserProfile, requestId: string) {
     }
 
     await client.query("commit");
-    await audit(actor.email, "admin.request_deleted", "time_off_request", requestId);
+    await audit(actor.email, "admin.request_deleted", "time_off_request", requestId, deletedMeta);
   } catch (error) {
     await client.query("rollback");
     throw error;
