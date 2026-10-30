@@ -1,12 +1,8 @@
-import type { AppSnapshot, TimeOffRequest, UserProfile } from "./app-data";
+import type { AppSnapshot } from "./app-data";
 import { formatTime12Hour, formatWeekdayDateLabel } from "./app-time";
-import { roleTracksPto } from "./pto";
+import { approvedRequests, buildMonthSummary, inMonth } from "./report-summary";
 
 export type ExportKind = "summary" | "detail";
-
-function roundHours(value: number) {
-  return Number(value.toFixed(2));
-}
 
 // Quotes every cell and neutralizes leading =, +, -, @ so spreadsheet apps never run a cell as a formula.
 function csvCell(value: string | number) {
@@ -20,26 +16,6 @@ export function toCsv(rows: Array<Array<string | number>>) {
   return "﻿" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
-function approvedRequests(snapshot: AppSnapshot) {
-  return snapshot.requests.filter((request) => request.status === "Approved");
-}
-
-function inMonth(date: string, month: string) {
-  return date.startsWith(month);
-}
-
-// Everyone whose PTO is tracked and is active, plus anyone with approved time in the month.
-function exportProfiles(snapshot: AppSnapshot, month: string) {
-  const withEvents = new Set(
-    approvedRequests(snapshot)
-      .filter((request) => [...request.segments.map((s) => s.date), ...request.makeupEntries.map((m) => m.date)].some((date) => inMonth(date, month)))
-      .map((request) => request.employeeId)
-  );
-  return snapshot.profiles
-    .filter((profile) => withEvents.has(profile.id) || (profile.status === "Active" && !profile.protectedOwner && roleTracksPto(profile.role)))
-    .sort((left, right) => left.fullName.localeCompare(right.fullName));
-}
-
 export const SUMMARY_HEADER = [
   "Employee", "Email", "Role", "Month",
   "PTO hours", "Additional time off hours", "Emergency/Exception hours", "Total hours off",
@@ -49,29 +25,12 @@ export const SUMMARY_HEADER = [
 
 // One row per employee: approved hours off and make-up hours whose dates fall in the month.
 export function buildSummaryRows(snapshot: AppSnapshot, month: string) {
-  const approved = approvedRequests(snapshot);
-  const rows = exportProfiles(snapshot, month).map((profile: UserProfile) => {
-    const mine = approved.filter((request) => request.employeeId === profile.id);
-    const offHours = (type: TimeOffRequest["requestType"]) => roundHours(mine
-      .filter((request) => request.requestType === type)
-      .flatMap((request) => request.segments)
-      .filter((segment) => inMonth(segment.date, month))
-      .reduce((total, segment) => total + segment.requestedHours, 0));
-    const makeup = mine.flatMap((request) => request.makeupEntries).filter((entry) => inMonth(entry.date, month));
-    const makeupHours = (status?: string) => roundHours(makeup
-      .filter((entry) => !status || entry.verificationStatus === status)
-      .reduce((total, entry) => total + entry.plannedHours, 0));
-    const pto = offHours("PTO");
-    const additional = offHours("Additional Time Off");
-    const emergency = offHours("Emergency/Exception");
-    const balance = snapshot.balances[profile.id];
-    return [
-      profile.fullName, profile.email, profile.role, month,
-      pto, additional, emergency, roundHours(pto + additional + emergency),
-      makeupHours(), makeupHours("Worked"), makeupHours("Not Worked"), makeupHours("Pending"),
-      balance && roleTracksPto(profile.role) ? balance.remainingHours : ""
-    ];
-  });
+  const rows = buildMonthSummary(snapshot, month).rows.map((row) => [
+    row.profile.fullName, row.profile.email, row.profile.role, month,
+    row.ptoHours, row.additionalHours, row.emergencyHours, row.offHours,
+    row.makeupPlannedHours, row.makeupWorkedHours, row.makeupNotWorkedHours, row.makeupPendingHours,
+    row.balance ? row.balance.remainingHours : ""
+  ]);
   return [SUMMARY_HEADER, ...rows];
 }
 

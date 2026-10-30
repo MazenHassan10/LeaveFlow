@@ -99,7 +99,11 @@ const reminderEmail = buildDayBeforeReminderEmail(admin, "2026-07-02", [
     employeeEmail: "employee@example.com",
     startTime: "18:00",
     endTime: "20:00",
-    hours: 2
+    hours: 2,
+    requestId: "r",
+    employeeId: "e",
+    requestType: "Additional Time Off",
+    reason: ""
   }
 ]);
 assert.deepEqual(reminderEmail.to, ["admin@example.com"]);

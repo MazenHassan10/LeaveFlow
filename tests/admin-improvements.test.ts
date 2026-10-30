@@ -43,7 +43,7 @@ assert.match(decisionEmail.text, /Decided by: Ana Admin/);
 assert.match(decisionEmail.text, /Tue, Nov 3/, "weekday dates in emails");
 
 // ---------- Reminder polish ----------
-const event = { id: "e", date: "2026-10-30", type: "makeup" as const, employeeName: "Jordan", employeeEmail: "emp@example.com", startTime: "08:00", endTime: "09:00", hours: 1 };
+const event = { id: "e", date: "2026-10-30", type: "makeup" as const, employeeName: "Jordan", employeeEmail: "emp@example.com", startTime: "08:00", endTime: "09:00", hours: 1, requestId: "r", employeeId: "e", requestType: "Additional Time Off" as const, reason: "" };
 const adminReminder = buildAdminReminderEmail(admin, "2026-10-30", [event], 4);
 assert.match(adminReminder.html, /Hi Ana Admin,/);
 assert.match(adminReminder.text, /in 4 days \(Fri, Oct 30\)/);

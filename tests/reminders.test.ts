@@ -21,7 +21,7 @@ const admin: UserProfile = {
 };
 const makeup: ReportCalendarEvent = {
   id: "m1", date: "2026-11-08", type: "makeup", employeeName: "Jordan", employeeEmail: "jordan@example.com",
-  startTime: "09:00", endTime: "17:00", hours: 8
+  startTime: "09:00", endTime: "17:00", hours: 8, requestId: "r", employeeId: "e", requestType: "Additional Time Off" as const, reason: ""
 };
 const adminFourDay = buildAdminReminderEmail(admin, "2026-11-08", [makeup], 4);
 assert.equal(adminFourDay.subject, "LeaveFlow reminder: time off and make-up plans in 4 days");
