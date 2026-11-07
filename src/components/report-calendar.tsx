@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { buildMonthDays, groupEventsByDate, type ReportCalendarEvent } from "@/src/lib/report-calendar";
-import { formatDateLabelInLosAngeles, formatTimeRange12Hour, formatWeekdayDateLabel } from "@/src/lib/app-time";
+import { formatDateLabelInLosAngeles, formatPacificRangeIn, formatTimeRange12Hour, formatWeekdayDateLabel } from "@/src/lib/app-time";
 import { cn } from "@/src/lib/utils";
 import { Badge } from "./ui/badge";
 import { StatusBadge } from "./status-badge";
@@ -29,8 +29,13 @@ function typeLabel(event: ReportCalendarEvent) {
   return event.type === "off" ? "Off" : "Make-up";
 }
 
-function describe(event: ReportCalendarEvent) {
-  return `${typeLabel(event)}: ${event.employeeName}, ${formatTimeRange12Hour(event.startTime, event.endTime)} PT, ${event.hours}h`;
+function timeRange(event: ReportCalendarEvent) {
+  return formatTimeRange12Hour(event.startTime, event.endTime);
+}
+
+function describe(event: ReportCalendarEvent, personal: boolean) {
+  const who = personal ? "" : ` ${event.employeeName},`;
+  return `${typeLabel(event)}:${who} ${timeRange(event)} PT, ${event.hours}h`;
 }
 
 function EventBadge({ event }: { event: ReportCalendarEvent }) {
@@ -38,15 +43,18 @@ function EventBadge({ event }: { event: ReportCalendarEvent }) {
 }
 
 // Full details for one entry: used by the day panel and the phone list.
-function EventDetail({ event }: { event: ReportCalendarEvent }) {
+// Personal calendars skip the name (it is always you) and add the Cairo time.
+function EventDetail({ event, personal }: { event: ReportCalendarEvent; personal: boolean }) {
+  const cairo = personal ? formatPacificRangeIn(event.date, event.startTime, event.endTime) : null;
   return (
     <div className={`calendar-detail calendar-pin-${event.type}`}>
       <div className="calendar-detail-head">
         <EventBadge event={event} />
-        <strong>{event.employeeName}</strong>
+        <strong>{personal ? `${timeRange(event)} PT` : event.employeeName}</strong>
         {event.makeupStatus ? <StatusBadge value={event.makeupStatus === "Pending" ? "Not marked" : event.makeupStatus} /> : null}
       </div>
-      <span>{formatTimeRange12Hour(event.startTime, event.endTime)} PT · {event.hours}h</span>
+      <span>{personal ? `${event.hours}h` : `${timeRange(event)} PT · ${event.hours}h`}</span>
+      {cairo ? <small>{cairo}</small> : null}
       <small>{event.requestType}{event.reason ? ` · ${event.reason}` : ""}</small>
     </div>
   );
@@ -58,10 +66,12 @@ type ReportCalendarProps = {
   // Already narrowed to the person picked in the month bar.
   events: ReportCalendarEvent[];
   // Short, unique display names ("Adam", "Mohamed I.") keyed by employee id.
-  shortNames: Map<string, string>;
+  shortNames?: Map<string, string>;
+  // One person's own calendar: entries show times instead of names.
+  personal?: boolean;
 };
 
-export function ReportCalendar({ month, today, events, shortNames }: ReportCalendarProps) {
+export function ReportCalendar({ month, today, events, shortNames, personal = false }: ReportCalendarProps) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -107,7 +117,9 @@ export function ReportCalendar({ month, today, events, shortNames }: ReportCalen
             </button>
           ))}
         </div>
-        <small className="form-hint">Click a day to see everyone on it. All times are Pacific.</small>
+        <small className="form-hint">
+          {personal ? "Click a day for details. All times are Pacific." : "Click a day to see everyone on it. All times are Pacific."}
+        </small>
       </div>
 
       <div className={cn("report-calendar-body", selectedDate && "has-panel")}>
@@ -148,12 +160,14 @@ export function ReportCalendar({ month, today, events, shortNames }: ReportCalen
                             type="button"
                             className={`calendar-pin calendar-pin-${event.type}`}
                             key={event.id}
-                            title={describe(event)}
-                            aria-label={describe(event)}
+                            title={describe(event, personal)}
+                            aria-label={describe(event, personal)}
                             onClick={open}
                           >
                             <EventBadge event={event} />
-                            <span>{shortNames.get(event.employeeId) ?? event.employeeName} · {event.hours}h</span>
+                            <span>
+                              {personal ? timeRange(event) : shortNames?.get(event.employeeId) ?? event.employeeName} · {event.hours}h
+                            </span>
                           </button>
                         ))}
                         {hidden > 0 ? (
@@ -187,7 +201,7 @@ export function ReportCalendar({ month, today, events, shortNames }: ReportCalen
                 <IconX />
               </button>
             </div>
-            {selectedEvents.map((event) => <EventDetail key={event.id} event={event} />)}
+            {selectedEvents.map((event) => <EventDetail key={event.id} event={event} personal={personal} />)}
           </aside>
         ) : null}
       </div>
@@ -197,7 +211,7 @@ export function ReportCalendar({ month, today, events, shortNames }: ReportCalen
         {eventDates.length ? eventDates.map((date) => (
           <div className="calendar-mobile-day" key={date}>
             <strong>{formatDateLabelInLosAngeles(date)}</strong>
-            {(eventsByDate[date] || []).map((event) => <EventDetail key={event.id} event={event} />)}
+            {(eventsByDate[date] || []).map((event) => <EventDetail key={event.id} event={event} personal={personal} />)}
           </div>
         )) : <p className="empty">Nothing approved {typeFilter === "makeup" ? "for make-up " : typeFilter === "off" ? "as time off " : ""}this month.</p>}
       </div>

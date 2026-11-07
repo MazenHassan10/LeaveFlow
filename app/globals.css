@@ -3866,10 +3866,24 @@ nav a:hover .nav-icon {
 }
 
 /* Calendar: same grid as before, plus filters, clickable days, "+N more", week totals and a day panel. */
-.reports-workspace .report-calendar {
+.reports-workspace .report-calendar,
+.my-calendar .report-calendar {
   display: grid;
   gap: var(--space-3);
   overflow: visible;
+}
+
+/* My calendar: this month's hours, beside the month arrows */
+.my-calendar-totals {
+  display: flex;
+  gap: var(--space-4);
+  margin: 0 0 0 auto;
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
+}
+
+.my-calendar-totals strong {
+  color: var(--ink);
 }
 
 .report-calendar-toolbar {

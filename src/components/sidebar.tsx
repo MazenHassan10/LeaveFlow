@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { UserProfile } from "@/src/lib/app-data";
 import { SignOutButton } from "./auth-buttons";
-import { IconBriefcase, IconShield, IconChartBar, IconChevronLeft, LeaveFlowLogo } from "./icons";
+import { IconBriefcase, IconCalendar, IconShield, IconChartBar, IconChevronLeft, LeaveFlowLogo } from "./icons";
 
 function initialsFor(name: string) {
   return name
@@ -31,6 +31,7 @@ export function Sidebar({
 
   const links = [
     { href: "/employee", label: "My time off", icon: <IconBriefcase /> },
+    { href: "/employee/calendar", label: "My calendar", icon: <IconCalendar /> },
     ...(canAccessAdmin ? [
       { href: "/admin", label: "Admin", icon: <IconShield /> },
       { href: "/reports", label: "Reports", icon: <IconChartBar /> },
