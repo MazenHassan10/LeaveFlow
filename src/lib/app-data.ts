@@ -1,7 +1,14 @@
 import { createHash } from "crypto";
 import { Pool } from "pg";
 import { normalizeDatabaseUrl } from "./database";
-import { formatCivilDate, losAngelesDate, losAngelesYear } from "./app-time";
+import {
+  formatCivilDate,
+  formatTime12Hour,
+  formatWeekdayDateLabel,
+  losAngelesDate,
+  losAngelesYear,
+  shiftHasEnded
+} from "./app-time";
 import { buildReportCalendarEvents } from "./report-calendar";
 import { sendNewRequestEmail, sendRequestChangedEmail, sendRequestDecisionEmail, sendSignInEmailChangedEmail, type RequestEmailKind } from "./email";
 import {
@@ -1631,7 +1638,16 @@ export async function deleteRequest(actor: UserProfile, requestId: string) {
   }
 }
 
-export async function verifyMakeup(actor: UserProfile, entryId: string, status: MakeupStatus) {
+// Worked / Not worked can only be recorded once the shift is over in Pacific time.
+function assertShiftEnded(date: string, endTime: string, status: MakeupStatus, now: Date) {
+  if (status === "Pending" || shiftHasEnded(date, endTime, now)) return;
+  throw new Error(
+    `That make-up shift hasn't ended yet. You can mark it after ${formatTime12Hour(endTime)} PT on ${formatWeekdayDateLabel(date)}.`
+  );
+}
+
+// `now` is only overridden by tests.
+export async function verifyMakeup(actor: UserProfile, entryId: string, status: MakeupStatus, now = new Date()) {
   if (!isAdmin(actor)) throw new Error("Admin access required.");
   if (!pool) {
     if (!memory.requests.some((request) => request.makeupEntries.some((item) => item.id === entryId))) {
@@ -1641,6 +1657,7 @@ export async function verifyMakeup(actor: UserProfile, entryId: string, status: 
       const entry = request.makeupEntries.find((item) => item.id === entryId);
       if (entry) {
         if (request.employeeId === actor.id) throw new Error("You cannot verify your own make-up hours.");
+        assertShiftEnded(entry.date, entry.endTime, status, now);
         entry.verificationStatus = status;
         entry.verifiedBy = actor.email;
         entry.verifiedAt = new Date().toISOString();
@@ -1650,7 +1667,7 @@ export async function verifyMakeup(actor: UserProfile, entryId: string, status: 
     return;
   }
   const owner = await pool.query(
-    `select r.employee_id
+    `select r.employee_id, e.makeup_date, e.end_time
      from makeup_plan_entries e
      join time_off_requests r on r.id = e.request_id
      where e.id = $1`,
@@ -1660,6 +1677,7 @@ export async function verifyMakeup(actor: UserProfile, entryId: string, status: 
   if (owner.rows[0].employee_id === actor.id) {
     throw new Error("You cannot verify your own make-up hours.");
   }
+  assertShiftEnded(formatDateValue(owner.rows[0].makeup_date), String(owner.rows[0].end_time).slice(0, 5), status, now);
   await pool.query(
     "update makeup_plan_entries set verification_status = $1, verified_by = $2, verified_at = now() where id = $3",
     [status, actor.email, entryId]

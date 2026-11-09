@@ -67,6 +67,10 @@ assert.deepEqual(rows.due.map((r) => `${r.employee?.fullName} ${r.entry.date} ow
 ]);
 assert.deepEqual(rows.upcoming.map((r) => r.entry.date), ["2026-11-02"]);
 assert.equal(buildMakeupRows(snapshot, { ...DEFAULT_ADMIN_FILTERS, month: "2026-11" }, viewer, today).due.length, 0, "month filter applies to make-up dates");
+// A shift is due once it has ended in Pacific time, not just once its date has passed.
+const nov2 = rows.upcoming[0].entry;
+assert.equal(buildMakeupRows(snapshot, DEFAULT_ADMIN_FILTERS, viewer, `2026-11-02 ${nov2.endTime}`).due.some((r) => r.entry.id === nov2.id), true, "due the moment it ends");
+assert.equal(buildMakeupRows(snapshot, DEFAULT_ADMIN_FILTERS, viewer, "2026-11-02 00:00").due.some((r) => r.entry.id === nov2.id), false, "not due earlier that day");
 
 // Off window
 assert.deepEqual(offWindow(today, "any"), { from: "2026-10-27", to: "2026-11-02", label: "Off this week" });

@@ -8,9 +8,41 @@ import { DecisionControls } from "./decision-controls";
 import { StatusBadge } from "./status-badge";
 import { DeleteRequestForm } from "./delete-request-form";
 import { PendingSubmitButton } from "./pending-submit-button";
-import { formatTimeRange12Hour, formatTimestampInLosAngeles, formatWeekdayDateLabel } from "@/src/lib/app-time";
+import {
+  formatDateLabelInLosAngeles,
+  formatTime12Hour,
+  formatTimeRange12Hour,
+  formatTimestampInLosAngeles,
+  formatWeekdayDateLabel,
+  losAngelesDate,
+  shiftHasEnded
+} from "@/src/lib/app-time";
 import { IconEdit } from "./icons";
 import { RequestForm } from "./request-form";
+
+// "Marked Nov 8 by Jane Doe": makes clear the shift needs nothing more.
+function markedLabel(verifiedAt: string | null | undefined, verifiedBy: string | null | undefined, profiles: UserProfile[]) {
+  const when = verifiedAt ? ` ${formatDateLabelInLosAngeles(losAngelesDate(new Date(verifiedAt)))}` : "";
+  const name = verifiedBy
+    ? profiles.find((profile) => profile.email.toLowerCase() === verifiedBy.toLowerCase())?.fullName || verifiedBy
+    : "";
+  return `Marked${when}${name ? ` by ${name}` : ""}`;
+}
+
+function MarkMakeupButton({ entryId, status, label, ghost = false }: {
+  entryId: string;
+  status: "Worked" | "Not Worked";
+  label: string;
+  ghost?: boolean;
+}) {
+  return (
+    <ActionForm action={verifyMakeupAction}>
+      <input type="hidden" name="entryId" value={entryId} />
+      <input type="hidden" name="status" value={status} />
+      <PendingSubmitButton className={ghost ? "btn-ghost compact" : "secondary"} pendingLabel="Saving...">{label}</PendingSubmitButton>
+    </ActionForm>
+  );
+}
 
 // viewerId: the signed-in admin. Admins cannot decide or verify their own requests (separation of duties),
 // so those controls are replaced by a note.
@@ -19,10 +51,12 @@ export function canAdminEdit(request: TimeOffRequest) {
   return request.status === "Pending" || request.status === "Approved";
 }
 
-export function AdminRequestCard({ request, profiles, viewerId, ptoRemaining }: {
+export function AdminRequestCard({ request, profiles, viewerId, now, ptoRemaining }: {
   request: TimeOffRequest;
   profiles: UserProfile[];
   viewerId?: string;
+  // Pacific "YYYY-MM-DD HH:MM" from the server: a make-up shift can be marked once it has ended.
+  now: string;
   // The employee's PTO left, counting this request's own hours if it is approved PTO.
   ptoRemaining: number;
 }) {
@@ -77,27 +111,44 @@ export function AdminRequestCard({ request, profiles, viewerId, ptoRemaining }: 
           <span title={`Edited ${formatTimestampInLosAngeles(request.editedAt)}`}><StatusBadge value="Edited" /></span>
         ) : null}
       </div>
-      {request.makeupEntries.map((entry) => (
+      {request.makeupEntries.map((entry) => {
+        const ended = shiftHasEnded(entry.date, entry.endTime, now);
+        return (
         <div className="makeup-line" key={entry.id}>
           <span>{formatWeekdayDateLabel(entry.date)} · {formatTimeRange12Hour(entry.startTime, entry.endTime)} · {entry.plannedHours}h</span>
           {/* Make-up work is only tracked (and markable) once the time off has been approved. */}
           {request.status === "Approved" ? <StatusBadge value={entry.verificationStatus} /> : null}
-          {request.status === "Approved" && !isOwnRequest ? (
+          {request.status === "Approved" && !isOwnRequest && entry.verificationStatus === "Pending" ? (
+            ended ? (
+              <>
+                <MarkMakeupButton entryId={entry.id} status="Worked" label="Worked" />
+                <MarkMakeupButton entryId={entry.id} status="Not Worked" label="Not worked" />
+              </>
+            ) : (
+              <small className="makeup-marked-by makeup-not-yet">
+                Can mark after {formatTime12Hour(entry.endTime)} PT, {formatWeekdayDateLabel(entry.date)}
+              </small>
+            )
+          ) : null}
+          {/* Already marked: say who marked it, and offer only the switch to the other answer. */}
+          {request.status === "Approved" && entry.verificationStatus !== "Pending" ? (
             <>
-              <ActionForm action={verifyMakeupAction}>
-                <input type="hidden" name="entryId" value={entry.id} />
-                <input type="hidden" name="status" value="Worked" />
-                <PendingSubmitButton className="secondary" pendingLabel="Saving...">Worked</PendingSubmitButton>
-              </ActionForm>
-              <ActionForm action={verifyMakeupAction}>
-                <input type="hidden" name="entryId" value={entry.id} />
-                <input type="hidden" name="status" value="Not Worked" />
-                <PendingSubmitButton className="secondary" pendingLabel="Saving...">Not worked</PendingSubmitButton>
-              </ActionForm>
+              <small
+                className="makeup-marked-by"
+                title={entry.verifiedAt ? `Marked ${formatTimestampInLosAngeles(entry.verifiedAt)}` : undefined}
+              >
+                {markedLabel(entry.verifiedAt, entry.verifiedBy, profiles)}
+              </small>
+              {isOwnRequest || !ended ? null : entry.verificationStatus === "Worked" ? (
+                <MarkMakeupButton entryId={entry.id} status="Not Worked" label="Change to not worked" ghost />
+              ) : (
+                <MarkMakeupButton entryId={entry.id} status="Worked" label="Change to worked" ghost />
+              )}
             </>
           ) : null}
         </div>
-      ))}
+        );
+      })}
       {/* Destructive action last, separated from the everyday controls. */}
       <footer className="request-card-footer">
         {request.status === "Pending" && !isOwnRequest ? <DecisionControls requestId={request.id} /> : null}

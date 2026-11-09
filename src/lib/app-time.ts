@@ -48,6 +48,24 @@ export function losAngelesHour(date = new Date()) {
   return Number(value);
 }
 
+// Pacific wall-clock time as "YYYY-MM-DD HH:MM", so it compares correctly as text.
+export function losAngelesDateTime(date = new Date()) {
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(date);
+  return `${losAngelesDate(date)} ${time}`;
+}
+
+// A shift has ended once Pacific time reaches its date and end time ("24:00" is midnight).
+// `now` is a Date, or a Pacific "YYYY-MM-DD HH:MM" string (a bare date means the start of that day).
+export function shiftHasEnded(date: string, endTime: string, now: Date | string = new Date()) {
+  const current = typeof now === "string" ? now : losAngelesDateTime(now);
+  return current >= `${date} ${endTime}`;
+}
+
 export function yearInLosAngeles(value: string | Date | null | undefined) {
   if (!value) return losAngelesYear();
   return losAngelesYear(value instanceof Date ? value : new Date(value));

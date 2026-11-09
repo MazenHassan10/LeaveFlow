@@ -30,7 +30,7 @@ const exam = await byReason("exam");
 await app.setRequestStatus(admin, exam.id, "Approved", "Good luck!");
 await app.adminUpdateRequest(admin, exam.id, form("Additional Time Off", "exam", "2026-12-11", "09:00", "17:00", [["2026-12-13", "09:00", "17:00"]]));
 const entryId = (await byReason("exam")).makeupEntries[0].id;
-await app.verifyMakeup(admin, entryId, "Worked");
+await app.verifyMakeup(admin, entryId, "Worked", new Date("2026-12-14T12:00:00.000Z"));
 await app.updatePtoAllowance(admin, emp.id, 40);
 await app.createTimeOffRequest(emp, form("PTO", "trip", "2026-12-20", "09:00", "13:00"));
 const trip = await byReason("trip");

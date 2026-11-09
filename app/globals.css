@@ -1757,6 +1757,19 @@ nav a:hover .nav-icon {
   width: 100%;
 }
 
+.makeup-marked-by {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+/* "Change to not worked" wraps inside its column instead of spilling out. */
+.makeup-line > form > button.btn-ghost {
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.25;
+}
+
 .makeup-line span {
   font-size: var(--text-sm);
   color: var(--ink-secondary);
@@ -4316,4 +4329,10 @@ button.activity-more { justify-self: center; width: auto; }
   .activity-list li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .report-activity > .segmented { justify-self: stretch; }
   .report-activity .segmented > :last-child { grid-column: 1 / -1; }
+}
+
+/* "Can mark after 5:00 PM PT, Sun, Nov 15" fills both button columns. */
+.makeup-line > .makeup-not-yet {
+  grid-column: span 2;
+  text-align: right;
 }

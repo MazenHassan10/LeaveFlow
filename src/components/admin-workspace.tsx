@@ -29,16 +29,17 @@ const TAB_LABELS: Record<AdminTab, string> = {
 type AdminWorkspaceProps = {
   snapshot: AppSnapshot;
   viewerId?: string;
-  today: string; // Pacific date, computed on the server so it matches the first render
+  now: string; // Pacific "YYYY-MM-DD HH:MM", computed on the server so it matches the first render
   initialTab: AdminTab;
 };
 
-export function AdminWorkspace({ snapshot, viewerId, today, initialTab }: AdminWorkspaceProps) {
+export function AdminWorkspace({ snapshot, viewerId, now, initialTab }: AdminWorkspaceProps) {
+  const today = now.slice(0, 10);
   const [filters, setFilters] = useState<AdminFilters>(DEFAULT_ADMIN_FILTERS);
   const [tab, setTab] = useState<AdminTab>(initialTab);
   const [requestView, setRequestView] = useState<RequestView>("Pending");
 
-  const counts = buildAttentionCounts(snapshot, filters, viewerId, today);
+  const counts = buildAttentionCounts(snapshot, filters, viewerId, now);
   const update = (patch: Partial<AdminFilters>) => setFilters((current) => ({ ...current, ...patch }));
   const filtered = hasActiveFilters(filters);
 
@@ -137,10 +138,10 @@ export function AdminWorkspace({ snapshot, viewerId, today, initialTab }: AdminW
 
       <div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} className="admin-panel">
         {tab === "requests" ? (
-          <AdminRequestsTab snapshot={snapshot} filters={filters} viewerId={viewerId} today={today} view={requestView} onViewChange={setRequestView} />
+          <AdminRequestsTab snapshot={snapshot} filters={filters} viewerId={viewerId} today={today} now={now} view={requestView} onViewChange={setRequestView} />
         ) : null}
         {tab === "makeups" ? (
-          <AdminMakeupsTab rows={buildMakeupRows(snapshot, filters, viewerId, today)} />
+          <AdminMakeupsTab rows={buildMakeupRows(snapshot, filters, viewerId, now)} />
         ) : null}
         {tab === "people" ? <AdminPeopleTab snapshot={snapshot} filters={filters} viewerId={viewerId} /> : null}
         {tab === "allowances" ? <AdminAllowancesTab snapshot={snapshot} filters={filters} /> : null}

@@ -1,5 +1,5 @@
 import type { AppSnapshot, MakeupEntry, TimeOffRequest, UserProfile } from "./app-data";
-import { addCivilDays } from "./app-time";
+import { addCivilDays, shiftHasEnded } from "./app-time";
 import { requestEventDates } from "./approval-groups";
 import { monthLabel } from "./report-calendar";
 
@@ -84,8 +84,9 @@ export type MakeupRow = {
   isOwn: boolean;
 };
 
-// Unmarked make-up shifts on approved requests: "due" once the shift's date has passed.
-export function buildMakeupRows(snapshot: AppSnapshot, filters: AdminFilters, viewerId: string | undefined, today: string) {
+// Unmarked make-up shifts on approved requests: "due" once the shift has ended in Pacific time.
+// `now` is a Pacific "YYYY-MM-DD HH:MM" (a bare date counts as the start of that day).
+export function buildMakeupRows(snapshot: AppSnapshot, filters: AdminFilters, viewerId: string | undefined, now: string) {
   const byId = new Map(snapshot.profiles.map((profile) => [profile.id, profile]));
   const rows: MakeupRow[] = [];
   for (const request of snapshot.requests) {
@@ -101,8 +102,8 @@ export function buildMakeupRows(snapshot: AppSnapshot, filters: AdminFilters, vi
   }
   rows.sort((left, right) => `${left.entry.date}${left.entry.startTime}`.localeCompare(`${right.entry.date}${right.entry.startTime}`));
   return {
-    due: rows.filter((row) => row.entry.date < today),
-    upcoming: rows.filter((row) => row.entry.date >= today),
+    due: rows.filter((row) => shiftHasEnded(row.entry.date, row.entry.endTime, now)),
+    upcoming: rows.filter((row) => !shiftHasEnded(row.entry.date, row.entry.endTime, now)),
   };
 }
 
@@ -122,7 +123,9 @@ export type AttentionCounts = {
   offLabel: string;
 };
 
-export function buildAttentionCounts(snapshot: AppSnapshot, filters: AdminFilters, viewerId: string | undefined, today: string): AttentionCounts {
+// `now`: Pacific "YYYY-MM-DD HH:MM" or a bare date.
+export function buildAttentionCounts(snapshot: AppSnapshot, filters: AdminFilters, viewerId: string | undefined, now: string): AttentionCounts {
+  const today = now.slice(0, 10);
   const byId = new Map(snapshot.profiles.map((profile) => [profile.id, profile]));
   const matching = snapshot.requests.filter((request) => requestMatches(request, filters, byId.get(request.employeeId)));
   const window = offWindow(today, filters.month);
@@ -135,7 +138,7 @@ export function buildAttentionCounts(snapshot: AppSnapshot, filters: AdminFilter
   return {
     // Only what this admin can act on: their own requests need another admin.
     requestsToDecide: matching.filter((request) => request.status === "Pending" && request.employeeId !== viewerId).length,
-    makeupsToMark: buildMakeupRows(snapshot, filters, viewerId, today).due.filter((row) => !row.isOwn).length,
+    makeupsToMark: buildMakeupRows(snapshot, filters, viewerId, now).due.filter((row) => !row.isOwn).length,
     newSignups: snapshot.profiles.filter((profile) => profile.status === "Pending" && profileMatches(profile, filters)).length,
     offCount: off.size,
     offLabel: window.label,

@@ -50,7 +50,9 @@ await createTimeOffRequest(dana, form("Additional Time Off", "midterm", "2026-12
 const midterm = await byReason("midterm");
 await setRequestStatus(admin, midterm.id, "Approved");
 const workedEntry = (await byId(midterm.id)).makeupEntries.find((entry) => entry.date === "2026-12-19")!;
-await verifyMakeup(admin, workedEntry.id, "Worked");
+// Make-up shifts can only be marked once they've ended (Pacific time).
+await assert.rejects(() => verifyMakeup(admin, workedEntry.id, "Worked", new Date("2026-12-19T20:59:00.000Z")), /hasn't ended yet.*1:00 PM PT on Sat, Dec 19/);
+await verifyMakeup(admin, workedEntry.id, "Worked", new Date("2026-12-19T21:00:00.000Z"));
 
 const result = await adminUpdateRequest(admin, midterm.id, form("Additional Time Off", "midterm", "2026-12-15", "09:00", "17:00",
   [["2026-12-19", "09:00", "13:00"], ["2026-12-21", "09:00", "13:00"]], "Moved to the 15th as agreed."));

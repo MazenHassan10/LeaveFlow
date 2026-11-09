@@ -24,6 +24,7 @@ type AdminRequestsTabProps = {
   filters: AdminFilters;
   viewerId?: string;
   today: string;
+  now: string; // Pacific "YYYY-MM-DD HH:MM": make-up shifts can be marked once they have ended
   view: RequestView;
   onViewChange: (view: RequestView) => void;
 };
@@ -35,7 +36,7 @@ function ptoRemainingFor(snapshot: AppSnapshot, request: TimeOffRequest) {
   return Number((remaining + own).toFixed(2));
 }
 
-export function AdminRequestsTab({ snapshot, filters, viewerId, today, view, onViewChange }: AdminRequestsTabProps) {
+export function AdminRequestsTab({ snapshot, filters, viewerId, today, now, view, onViewChange }: AdminRequestsTabProps) {
   const [showOlder, setShowOlder] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const byId = new Map(snapshot.profiles.map((profile) => [profile.id, profile]));
@@ -143,7 +144,7 @@ export function AdminRequestsTab({ snapshot, filters, viewerId, today, view, onV
           {decided.length ? (
             <div className="stack">
               {decided.map((request) => (
-                <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} viewerId={viewerId} ptoRemaining={ptoRemainingFor(snapshot, request)} />
+                <AdminRequestCard key={request.id} request={request} profiles={snapshot.profiles} viewerId={viewerId} now={now} ptoRemaining={ptoRemainingFor(snapshot, request)} />
               ))}
             </div>
           ) : (
